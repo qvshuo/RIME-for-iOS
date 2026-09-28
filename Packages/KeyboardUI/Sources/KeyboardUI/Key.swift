@@ -7,22 +7,12 @@ public struct Key: View {
     let theme: Theme
     let shiftState: ShiftState
     let action: (KeyAction) -> Void
-    /// 仅空格键长按同步用：把预告进度写入宿主状态（顶部胶囊读取展示）。
-    var inputState: InputState?
 
     @State private var isPressed = false
     @State private var repeater: KeyPressRepeater?
-    /// 空格键长按同步：步进计时器与已按住秒数（满 `Theme.spaceSyncHoldDuration` 秒触发）。
-    @State private var spaceHoldTimer: Timer?
-    @State private var holdElapsed: Double = 0
-    @State private var spaceHoldTriggeredSync = false
 
     private var isRepeatable: Bool {
         descriptor.action.isBackspace
-    }
-
-    private var isSpaceAction: Bool {
-        descriptor.action.isSpace
     }
 
     /// 仅字符键显示按压气泡；数字和符号布局在解析时同样使用 `.character`。
@@ -35,13 +25,11 @@ public struct Key: View {
         descriptor: KeyDescriptor,
         theme: Theme,
         shiftState: ShiftState = .lowercase,
-        inputState: InputState? = nil,
         action: @escaping (KeyAction) -> Void
     ) {
         self.descriptor = descriptor
         self.theme = theme
         self.shiftState = shiftState
-        self.inputState = inputState
         self.action = action
     }
 
@@ -49,8 +37,6 @@ public struct Key: View {
         Group {
             if isRepeatable {
                 repeatableKeyBody
-            } else if isSpaceAction {
-                spaceKeyBody
             } else {
                 Button(action: { action(descriptor.action) }) {
                     keyLabel
@@ -111,88 +97,6 @@ public struct Key: View {
             .onDisappear {
                 repeater?.endPress()
             }
-    }
-
-    /// 空格键：单击上屏空格（双击=句号逻辑由控制器处理），长按 3 秒触发手动同步，
-    /// 按住期间键面中央显示环形进度。不重复连打空格；长按期间松手则按普通空格
-    /// 处理，满 3 秒才触发同步并吞掉本次松手。
-    private var spaceKeyBody: some View {
-        keyLabel
-            .foregroundStyle(foregroundColor)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .keyBackground(
-                isPressed: isPressed,
-                style: descriptor.style,
-                theme: theme
-            )
-            .contentShape(Rectangle())
-            // 显式覆盖系统默认按键动效（约 0.2s，太慢有迟滞感）。
-            .animation(.easeOut(duration: 0.05), value: isPressed)
-            .overlay {
-                KeyTouchTracker(
-                    onPress: {
-                        guard !isPressed else { return }
-                        isPressed = true
-                        KeyboardFeedback.play()
-                        startSpaceHoldTimer()
-                    },
-                    onRelease: {
-                        isPressed = false
-                        cancelSpaceHoldTimer()
-                        // 长按满 3 秒已触发同步，本次松手不再输入空格。
-                        if !spaceHoldTriggeredSync {
-                            action(.space)
-                        }
-                    },
-                    onCancel: {
-                        // 系统取消触摸 / 滑离：不插入空格，只复位视觉与长按计时。
-                        isPressed = false
-                        spaceHoldTriggeredSync = false
-                        cancelSpaceHoldTimer()
-                    }
-                )
-            }
-            .onDisappear {
-                cancelSpaceHoldTimer()
-            }
-    }
-
-    /// 空格长按计时：每 0.05s 步进，超过 `Theme.spaceSyncPreviewDelay` 后把进度
-    /// 写入 `InputState.syncHoldProgress`（顶部预告胶囊展示），满
-    /// `Theme.spaceSyncHoldDuration` 秒触发同步（触觉 + `.startSync`）。
-    private func startSpaceHoldTimer() {
-        spaceHoldTriggeredSync = false
-        holdElapsed = 0
-        inputState?.syncHoldProgress = nil
-        spaceHoldTimer?.invalidate()
-        // self 是结构体值拷贝，闭包内通过 @State 的非 mutating setter 写共享存储即可。
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [self] _ in
-            MainActor.assumeIsolated {
-                guard holdElapsed < Theme.spaceSyncHoldDuration else { return }
-                holdElapsed = min(Theme.spaceSyncHoldDuration, holdElapsed + 0.05)
-                if holdElapsed >= Theme.spaceSyncPreviewDelay {
-                    inputState?.syncHoldProgress =
-                        holdElapsed / Theme.spaceSyncHoldDuration
-                }
-                if holdElapsed >= Theme.spaceSyncHoldDuration {
-                    spaceHoldTimer?.invalidate()
-                    spaceHoldTimer = nil
-                    inputState?.syncHoldProgress = nil
-                    spaceHoldTriggeredSync = true
-                    KeyboardFeedback.play()
-                    action(.startSync)
-                }
-            }
-        }
-        spaceHoldTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    private func cancelSpaceHoldTimer() {
-        spaceHoldTimer?.invalidate()
-        spaceHoldTimer = nil
-        holdElapsed = 0
-        inputState?.syncHoldProgress = nil
     }
 
     @ViewBuilder

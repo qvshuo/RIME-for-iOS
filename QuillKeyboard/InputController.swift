@@ -18,27 +18,46 @@ final class InputController: UIInputViewController {
     private var lastKeyboardType: UIKeyboardType?
     private var lastReturnKeyType: UIReturnKeyType?
 
-    /// 手动同步（长按空格键 3 秒触发）是否进行中，防止重复触发。
+    /// 手动同步（同步页按钮触发）是否进行中，防止重复触发。
     private var isSyncing = false
 
     /// `.completed / .failed` toast 的自动收起任务。
     private var toastDismissTask: Task<Void, Never>?
 
+    /// 面板模式观察任务：候选出现时强制切回输入页。
+    private var panelWatchTask: Task<Void, Never>?
+
+    /// 本次启动是否检测到上次键盘异常退出（闪退/Jetsam 标记）。
+    private var crashedLastRun = false
+
     deinit {
+        panelWatchTask?.cancel()
+        toastDismissTask?.cancel()
+        // 走到 deinit = 正常退出，清除崩溃标记（闪退/Jetsam 不会走这里）。
+        rimeContext.recordKeyboardExit()
         rimeContext.destroySession()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        // 崩溃检测：上次标记还在 = 上次未走 deinit（闪退/Jetsam）。
+        // SIGSEGV 等信号到达时进程已无安全执行环境，写文件不可靠，改用
+        // 「启动写入 / deinit 清除」标记法，下次启动补记崩溃日志。
+        crashedLastRun = rimeContext.recordKeyboardLaunch()
+        installCrashHandlers()
+
         // 只 start() 不部署：全量部署超扩展 ~77MB 内存上限会被 Jetsam 杀死，
         // 数据来自 Bundle 内预构建的 SharedSupport/build。
         rimeContext.log("Keyboard: viewDidLoad")
+        rimeContext.keyboardLog("viewDidLoad\(crashedLastRun ? "（上次异常退出）" : "")")
         Task {
             await rimeContext.start()
+            rimeContext.keyboardLog("RIME start 完成")
         }
 
         createKeyboardView()
+        startPanelWatch()
     }
 
     /// 完全访问只影响扩展自身联网（同步）；per-app 自签基线下与主 App 无共享
@@ -51,6 +70,7 @@ final class InputController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        rimeContext.keyboardLog("viewWillAppear")
         refreshInputTextState()
         refreshKeyboardContext()
         // viewDidLoad 挂载会有巨大布局位移，须在此挂载；幂等防重复 addChild / 约束累积。
@@ -106,7 +126,7 @@ final class InputController: UIInputViewController {
     }
 
     private func makeKeyboardView() -> KeyboardView {
-        KeyboardView(
+        var view = KeyboardView(
             rimeContext: rimeContext,
             inputState: inputState,
             keyboardType: textDocumentProxy.keyboardType ?? .default,
@@ -115,6 +135,40 @@ final class InputController: UIInputViewController {
                 self?.handleKeyAction(action)
             }
         )
+        view.onSync = { [weak self] in
+            self?.startManualSync()
+        }
+        view.isSyncing = isSyncing
+        view.crashedLastRun = crashedLastRun
+        return view
+    }
+
+    /// 面板模式守卫：候选出现时强制切回输入页（功能页不挡候选）；
+    /// 面板切换写入键盘日志节点。
+    private func startPanelWatch() {
+        let state = inputState
+        let rime = rimeContext
+        panelWatchTask = Task { [weak self, weak state, weak rime] in
+            var lastMode = state?.panelMode
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard let state, let rime else { return }
+                let mode = state.panelMode
+                if mode != lastMode {
+                    let name: String = switch mode {
+                    case .input: "输入"
+                    case .sync: "同步"
+                    case .log: "日志"
+                    }
+                    rime.keyboardLog("面板 → \(name)")
+                    lastMode = mode
+                }
+                // 候选出现且不在输入页：切回输入页，候选优先。
+                if mode != .input, !(self?.rimeContext.candidates.isEmpty ?? true) {
+                    state.panelMode = .input
+                }
+            }
+        }
     }
 
     private func handleKeyAction(_ action: KeyAction) {
@@ -181,6 +235,10 @@ final class InputController: UIInputViewController {
             resetDoubleSpaceState()
             startManualSync()
             return
+        case .clearLogs:
+            resetDoubleSpaceState()
+            clearKeyboardLogs()
+            return
         case .return:
             resetDoubleSpaceState()
             // 无拼音 preedit 时跳过 RIME，直接换行。
@@ -216,7 +274,7 @@ final class InputController: UIInputViewController {
         }
     }
 
-    /// 长按空格触发的手动同步；完成后按需重建会话让合并的新词生效。
+    /// 同步页按钮触发的手动同步；完成后按需重建会话让合并的新词生效。
     private func startManualSync() {
         guard !isSyncing else { return }
         // 有组合时不开始：打断会丢 preedit / 候选。
@@ -224,12 +282,16 @@ final class InputController: UIInputViewController {
         isSyncing = true
         toastDismissTask?.cancel()
         inputState.toast = .started
-        rimeContext.log("Keyboard: manual WebDAV sync (space long-press)")
+        // toast 变化驱动 SwiftUI 重求值 body，使同步页按钮进入「同步中…」。
+        hostingController?.rootView = makeKeyboardView()
+        rimeContext.log("Keyboard: manual WebDAV sync (panel button)")
+        rimeContext.keyboardLog("手动同步开始")
         let rime = rimeContext
         // 弱引用：键盘收起时不应把控制器保留到同步结束（最坏 15s+）。
         Task { [weak self] in
             let success = await WebDAVSync.syncWithTimeout(.seconds(60))
             rime.log("Keyboard: manual WebDAV sync done success=\(success)")
+            rime.keyboardLog("手动同步结束 success=\(success)")
             await MainActor.run {
                 guard let self else { return }
                 if self.rimeContext.preedit.isEmpty {
@@ -243,6 +305,7 @@ final class InputController: UIInputViewController {
                 let toast: SyncToast = success ? .completed : .failed
                 self.inputState.toast = toast
                 self.isSyncing = false
+                self.hostingController?.rootView = self.makeKeyboardView()
                 self.scheduleToastDismissal(delay: toast == .failed ? 4.0 : 2.5)
             }
         }
@@ -287,6 +350,45 @@ final class InputController: UIInputViewController {
         insertToProxy(periodText)
         doubleSpaceTracker.reset()
         return true
+    }
+
+    /// 日志页「清空」：删除 keyboard.log（含轮转件）与崩溃标记。
+    private func clearKeyboardLogs() {
+        rimeContext.clearKeyboardLogs()
+        rimeContext.keyboardLog("日志已清空")
+    }
+
+    /// 崩溃兜底记录：NSSetUncaughtExceptionHandler 处理 ObjC/Swift 未捕获异常，
+    /// SIGSEGV/SIGBUS/SIGILL/SIGABRT 仅能尽力写一行（信号上下文里大多数调用
+    /// 都不安全；这里只做一次小文件写，接受不可靠换可见性）。真正的崩溃
+    /// 确认仍靠启动/deinit 标记对。
+    private func installCrashHandlers() {
+        NSSetUncaughtExceptionHandler { exception in
+            let rime = RimeContext.shared
+            rime.keyboardLog("未捕获异常: \(exception.name.rawValue) - \(exception.reason ?? "")")
+        }
+        let signals: [Int32] = [SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGTRAP]
+        for sig in signals {
+            signal(sig) { _ in
+                // async-signal-unsafe 但只有一次小写：闪退现场比规范重要。
+                if let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                    let log = url.appendingPathComponent("Logs/keyboard.log")
+                    let line = "[signal] 致命信号 \(sig)，进程即将终止\n"
+                    if let data = line.data(using: .utf8),
+                       let handle = try? FileHandle(forWritingTo: log) {
+                        handle.seekToEndOfFile()
+                        handle.write(data)
+                        try? handle.close()
+                    } else if let data = line.data(using: .utf8) {
+                        try? FileManager.default.createDirectory(
+                            at: log.deletingLastPathComponent(),
+                            withIntermediateDirectories: true
+                        )
+                        try? data.write(to: log)
+                    }
+                }
+            }
+        }
     }
 
     /// 本键盘上屏了非空文本，标记输入框已有文本（回车键高亮）。

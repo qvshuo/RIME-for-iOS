@@ -14,6 +14,8 @@ public enum KeyAction: Sendable, Equatable {
     case symbols
     case toggleLanguage
     case selectCandidate(Int)
+    /// 清空日志文件（键盘日志页）。
+    case clearLogs
 }
 
 public extension KeyAction {

@@ -39,6 +39,7 @@ public final class RimeContext: @unchecked Sendable {
     @ObservationIgnored public internal(set) var commitText: String = ""
 
     let logFileName = "quill.log"
+    let keyboardLogFileName = "keyboard.log"
 
     private init() {}
 }

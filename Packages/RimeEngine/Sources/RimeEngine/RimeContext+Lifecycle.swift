@@ -187,7 +187,7 @@ extension RimeContext {
     }
 
     /// 销毁并立即重建会话，让同步合并后的用户词库 / custom_phrase 生效。
-    /// 手动同步完成（长按空格键）后调用；组合未清空时跳过销毁（避免丢 preedit）。
+    /// 手动同步完成（键盘同步页按钮）后调用；组合未清空时跳过销毁（避免丢 preedit）。
     public func recreateSession() {
         lock.lock()
         defer { lock.unlock() }

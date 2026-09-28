@@ -54,8 +54,6 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.art.anjing.quill
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)art.anjing.quill.shared
     dependencies:
       - target: QuillKeyboard
       - package: RimeEngine
@@ -93,8 +91,6 @@ targets:
         com.apple.security.application-groups:
           - group.art.anjing.quill
         com.apple.security.network.client: true
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)art.anjing.quill.shared
     dependencies:
       - package: RimeEngine
         product: RimeEngine

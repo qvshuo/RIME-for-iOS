@@ -16,6 +16,7 @@ let package = Package(
     dependencies: [
         .package(path: "../RimeEngine"),
         .package(path: "../Models"),
+        .package(path: "../Sync"),
     ],
     targets: [
         .target(
@@ -23,6 +24,7 @@ let package = Package(
             dependencies: [
                 .product(name: "RimeEngine", package: "RimeEngine"),
                 .product(name: "Models", package: "Models"),
+                .product(name: "Sync", package: "Sync"),
             ],
             path: "Sources/KeyboardUI",
             resources: [

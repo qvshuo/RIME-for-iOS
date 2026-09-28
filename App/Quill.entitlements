@@ -6,9 +6,5 @@
 	<array>
 		<string>group.art.anjing.quill</string>
 	</array>
-	<key>keychain-access-groups</key>
-	<array>
-		<string>$(AppIdentifierPrefix)art.anjing.quill.shared</string>
-	</array>
 </dict>
 </plist>

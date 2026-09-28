@@ -9,9 +9,9 @@ import Synchronization
 /// 只同步用户词库与自定义短语两个文件；暂存目录用完即弃，不留本地缓存。
 /// 成功与否仅以返回值表达（超时也按失败处理）；失败原因经 `RimeContext.log()` 记录。
 public enum WebDAVSync {
-    /// 远程同步根目录（相对 baseURL）。默认 `Rime_Sync`，可在主 App 设置里自定义。
+    /// 远程同步根目录（相对 baseURL）。默认 `Rime_Sync`，可在键盘同步页自定义。
     public static var syncRootPath: String {
-        let saved = WebDAVKeychainStore.load()?.syncPath?
+        let saved = WebDAVCredentialStore.load()?.syncPath?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return saved.isEmpty ? "Rime_Sync" : saved
     }
@@ -67,7 +67,7 @@ public enum WebDAVSync {
         }
         inFlight.withLock { $0 = true }
         defer { inFlight.withLock { $0 = false } }
-        guard let credentials = WebDAVKeychainStore.load() else {
+        guard let credentials = WebDAVCredentialStore.load() else {
             context.log("WebDAVSync: no credentials saved")
             return false
         }

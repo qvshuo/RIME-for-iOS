@@ -26,7 +26,7 @@ Packages/
   RimeEngine/                      # Swift-direct librime bridge + RimeContext (@Observable)
   Models/                          # shared domain models (Candidate / KeyAction / KeyboardLayout / SyncToast)
   KeyboardUI/                      # self-built SwiftUI keyboard + JSON layouts
-  Sync/                            # backend-agnostic WebDAV sync (WebDAVClient / WebDAVKeychainStore / WebDAVSync)
+  Sync/                            # backend-agnostic WebDAV sync (WebDAVClient / WebDAVCredentialStore / WebDAVSync)
 Frameworks/                        # 9 prebuilt xcframeworks : librime libglog libleveldb libmarisa libopencc libyaml-cpp boost_{filesystem,regex,atomic}
 Resources/SharedSupport/           # RIME data (schemas, dicts, opencc, lua, lm_sc.gram) + generated build/*.bin
 scripts/build-librime.sh           # cross-compile librime + deps → Frameworks/*.xcframework
@@ -178,11 +178,24 @@ Keep it simple: if `rimeContext.preedit` is empty → `textDocumentProxy.deleteB
 
 ### Space bar & manual sync trigger
 
-- The space key is **not** repeatable. Tap inserts a space; double-tap within 0.35 s converts to `。` (zh) / `.` (en). **Double-tap conversion only applies when both taps land as literal spaces (no RIME preedit)** — during a composition the space commits the candidate and the tracker is **reset** (`InputController.resetDoubleSpaceState()`), so a quick second tap is a plain space: double-tap during preedit = 选词 + 空格 (`你好 `), never `。`. **Long-press 3 s triggers the manual WebDAV sync** (`Theme.spaceSyncHoldDuration`; `Key.spaceKeyBody` runs a 0.05 s-step repeating `Timer`). After a 0.5 s preview delay (`Theme.spaceSyncPreviewDelay`) the hold writes progress into `InputState.syncHoldProgress`, which shows a top-center hint capsule (mini ring + 「继续按住同步」，same visual language as the toast); at full the capsule hands over to the sync toast and fires `action(.startSync)`; releasing before 3 s is a normal space. A RIME preedit aborts it (`startManualSync()` guards `preedit.isEmpty`).
-- Sync feedback = transient top-center **toast** (`SyncToastView`, piped by `InputState.toast` of type `SyncToast` in `Models`): `started` persists until the sync finishes (`SyncToast` carries no duration), then the controller swaps in `同步完成` / `同步失败，请检查设置` and dismisses after 2.5 s / 4.0 s (`InputController.scheduleToastDismissal`). The hold-hint capsule and the toast share one position and one visual language (capsule, `keyBackground` fill + `floatingShadow()`, mutually exclusive via `SyncToastOverlay.phase`), `allowsHitTesting(false)`, floats at keyboard top center.
-- **While the toast is visible all keys are swallowed**: `KeyboardView.handleKey` starts with `guard inputState.toast == nil else { return }` (`.startSync` passes because the toast is nil before it's set).
-- Sync is bounded by a **60 s timeout** (`WebDAVSync.syncWithTimeout(.seconds(60))`); on timeout it reports failure (`false`). The timeout **races** the sync and never cancels it — the loser keeps running in the background (a 2026-08-23 incident showed "files uploaded but 同步失败" when a slow WebDAV endpoint blew past 15 s; measured: Koofr primary mount ~1.5 s per 1.1 MB GET, Koofr's OneDrive-backed mount 3-5× slower). 60 s was chosen to cover the slow mount; if an endpoint can't finish in time, use a faster one. The `recreateSession()` call itself is owned by `InputController.startManualSync()` and runs whenever `preedit.isEmpty` **regardless of sync result** — a failed/timeout sync may still have applied foreign `custom_phrase.txt` (step 3.5), which needs a session reload to take effect.
-- **No-App-Group is the supported baseline, not a defect**: the app is designed around self-signed installs (user uses Feather); the main app and keyboard are expected to run with independent sandboxes, user data, and logs. Each process logs an `AppGroup shared/per-app` marker at startup so you know where its log lands; keyboard-side sync logs land in the extension's private `Documents/Logs` and never appear in the main app's 导出日志 — that is normal, do not "fix" it or warn about it in the UI. Accordingly there is **no「允许完全访问」status row or warning**: Full Access only gates the extension's own networking (sync), the main app has no channel to observe it in per-app mode (the old shared-defaults flag was removed as dead code), and an ungranted state surfaces naturally as a failed sync whose toast says 检查设置.
+- The space key is **not** repeatable. Tap inserts a space; double-tap within 0.35 s converts to `。` (zh) / `.` (en). **Double-tap conversion only applies when both taps land as literal spaces (no RIME preedit)** — during a composition the space commits the candidate and the tracker is **reset** (`InputController.resetDoubleSpaceState()`), so a quick second tap is a plain space: double-tap during preedit = 选词 + 空格 (`你好 `), never `。`.
+- **Manual sync lives in the keyboard's 同步 panel** (candidate-bar left 「⋯」menu → 同步, shown when no candidates): the panel edits WebDAV credentials inline and has an explicit 同步 button (`KeyboardView.onSync` → `InputController.startManualSync()`). The old space-long-press trigger is removed. A RIME preedit aborts the sync (`startManualSync()` guards `preedit.isEmpty`).
+- Sync feedback = transient top-center **toast** (`SyncToastView`, piped by `InputState.toast` of type `SyncToast` in `Models`): `started` persists until the sync finishes (`SyncToast` carries no duration), then the controller swaps in `同步完成` / `同步失败，请检查设置` and dismisses after 2.5 s / 4.0 s (`InputController.scheduleToastDismissal`).
+- **While the toast is visible all keys are swallowed**: `KeyboardView.handleKey` starts with `guard inputState.toast == nil else { return }`.
+- Sync is bounded by a **60 s timeout** (`WebDAVSync.syncWithTimeout(.seconds(60))`); on timeout it reports failure (`false`). The timeout **races** the sync and never cancels it — the loser keeps running in the background. The `recreateSession()` call itself is owned by `InputController.startManualSync()` and runs whenever `preedit.isEmpty` **regardless of sync result** — a failed/timeout sync may still have applied foreign `custom_phrase.txt`, which needs a session reload to take effect.
+- **No-App-Group is the supported baseline, not a defect**: the app is designed around self-signed installs (user uses Feather); the main app and keyboard are expected to run with independent sandboxes, user data, and logs. Because the two processes cannot share data without an App Group, **WebDAV credentials are stored by the keyboard extension itself** (`WebDAVCredentialStore`, JSON in the extension's private container) and the whole sync/log UI lives in the keyboard — the main app keeps only the keyboard-enable row. Each process logs an `AppGroup shared/per-app` marker at startup so you know where its log lands. Accordingly there is **no「允许完全访问」status row or warning**: Full Access only gates the extension's own networking (sync), and an ungranted state surfaces naturally as a failed sync whose toast says 检查设置.
+
+### Keyboard panels (menu → 同步 / 日志)
+
+When the candidate bar is empty, a 「⋯」menu button appears at its left with two entries; picking one swaps the key area for a panel (`InputState.panelMode` of type `KeyboardPanelMode` in `Models`; the menu keeps a「键盘」entry to return). New candidates force the mode back to `.input` (`InputController.startPanelWatch` polls every 150 ms) so a panel never hides candidates. Panel switches are recorded as nodes in the keyboard log.
+
+- **同步 panel** (`SyncPanelView`, KeyboardUI → Sync): inline credential fields (server/user/password/sync dir/installation ID), 保存 (tests connectivity first, saves to `WebDAVCredentialStore`), 删除凭据, and the 同步 button. Status messages render inline in the panel.
+- **日志 panel** (`LogPanelView`): tail preview of `Logs/keyboard.log` (last 8 KB), a `ShareLink` to export the full file, and 清空 (confirmation dialog → `KeyAction.clearLogs` → `RimeContext.clearKeyboardLogs()`).
+
+### Keyboard-side logging & crash capture
+
+- `RimeContext.keyboardLog()` appends to **`Logs/keyboard.log`** (rotated at 1 MiB to `keyboard.log.old`), separate from the engine/glog stream in `quill.log`. Nodes logged: viewDidLoad / viewWillAppear / RIME start 完成 / 面板切换 / 同步开始结束 / 清空.
+- **Crash detection is marker-based** (`recordKeyboardLaunch()` in `viewDidLoad` writes `keyboard_crash.marker`, `recordKeyboardExit()` in `deinit` removes it): a surviving marker at next launch means the previous run never reached `deinit` (crash/Jetsam) and「检测到上次键盘未正常退出」is appended, plus an orange notice in the 同步 panel. `installCrashHandlers()` additionally writes best-effort lines for uncaught exceptions and fatal signals (async-signal-unsafe by necessity; the marker pair remains the source of truth).
 
 ### Shift & language
 
@@ -200,16 +213,14 @@ Only `.default` and `.asciiCapable` are honored (fcitx5-ios ignores `UIKeyboardT
 
 ## Settings UI conventions
 
-- `SettingsView` is a `NavigationStack` + `List` (internally a `Form` with `.formStyle(.grouped)`, functionally equivalent) with `.navigationTitle("Quill 输入法")`, `.navigationBarTitleDisplayMode(.large)` (home page = system large title, no custom icon).
-- **Buttons need an explicit non-`.automatic` `.buttonStyle` (`.borderless`, `.plain`, or `.borderedProminent`)** — on iOS 26 the List row's gesture swallows single taps on `.automatic` buttons (they only fire on long press). The List has **no** tap-to-dismiss gesture; keyboard dismissal relies on `.scrollDismissesKeyboard(.immediately)` + the keyboard-toolbar 完成 button.
-- The WebDAV settings are **one 同步 section**: 服务器地址/用户名/密码/同步目录/安装 ID each get a footnote label above via `LabelledField`, then 保存/测试连接; the footer shows the 长按空格 3 秒 hint. 删除凭据 sits in its **own destructive Section** below (keychain survives uninstall, so deletion must be explicit) with its `confirmationDialog` **attached to the destructive Button itself** — iOS 26 anchors the dialog to whatever view carries the modifier, so a Form-level attachment floats it to the top of the screen while a button-level one keeps it next to 删除凭据. Input fields use the `clearableField` modifier (gray X, `.tint(.secondary)`, shown only when focused & non-empty); the info `info.circle` is `.tint(.primary)` (a `.foregroundStyle` on the image is overridden by the button tint).
-- 保存/测试连接 are `.disabled` when `allCredentialsEmpty` (the 3 credential fields 服务器地址/用户名/密码 all empty; 同步目录 and 安装 ID both have defaults and don't count).
-- The 同步 section header and the 同步目录/安装 ID field titles each carry an `info.circle` 弹窗说明; **all popups share the single `syncAlert` alert state**.
-- `最近同步于 …` was removed along with its keychain timestamp (`saveLastSyncDate`/`loadLastSyncDate`) and the Darwin completion notification — do not reintroduce without a cross-process channel rationale.
+- `SettingsView` is a `NavigationStack` + `Form` (`.formStyle(.grouped)`) with `.navigationTitle("Quill 输入法")`, `.navigationBarTitleDisplayMode(.large)`.
+- **The main app is intentionally minimal**: keyboard-enable status (+ 去系统设置中开启) and the 关于 section only. WebDAV sync settings, manual sync, and log export all live **inside the keyboard** (menu → 同步 / 日志) because self-signed installs give the two processes independent sandboxes — the main app can neither share credentials with nor read logs from the keyboard.
+- **Buttons need an explicit non-`.automatic` `.buttonStyle` (`.borderless`, `.plain`, or `.borderedProminent`)** — on iOS 26 the List row's gesture swallows single taps on `.automatic` buttons (they only fire on long press).
+- `最近同步于 …` and the shared-Keychain credential channel (`WebDAVKeychainStore`, `keychain-access-groups`) were removed — do not reintroduce without a cross-process channel rationale; credentials live in the keyboard extension's own container via `WebDAVCredentialStore`.
 
 ## Sync: WebDAV (Koofr) — keyboard is the single sync authority
 
-No App Group / iCloud needed for sync; the app and keyboard share credentials via a **shared Keychain** (`keychain-access-groups: $(AppIdentifierPrefix)art.anjing.quill.shared`, both target entitlements) → `WebDAVKeychainStore`.
+No App Group / iCloud needed for sync; credentials are stored **by the keyboard extension** in its private container (`WebDAVCredentialStore`, JSON file; password Base64-wrapped as minimal obfuscation — the sandbox is the boundary). The keyboard's 同步 panel is the only place that reads/writes them.
 
 Flow (`WebDAVSync.sync()`, Squirrel semantics):
 
@@ -221,7 +232,7 @@ Flow (`WebDAVSync.sync()`, Squirrel semantics):
 6. `RimeContext.setStagingDirectory(stagingDir:)` (engine is backend-agnostic; called by `Sync`) rewrites `installation.yaml` `sync_dir` to the staging dir.
 7. `syncUserData()` (librime `RimeSyncUserData`) exports this device's userdb to `staging/<installationID>/` (default `Quill`, editable via 安装 ID) and merges all device dirs; **it requires a staging override** (no local fallback) and always runs inside `defer { clearStagingDirectory() }`.
 8. Upload `staging/<installationID>/` back to `<root>/<installationID>/`.
-9. Done — no completion notification, no last-sync timestamp (both removed: the only cross-process channel is the keychain, and the timestamp feature wasn't worth a keychain entry).
+9. Done — no completion notification, no last-sync timestamp (both removed: no cross-process channel exists without an App Group, and the timestamp feature wasn't worth it).
 
 There is **no persistent local `Rime_sync/` mirror** — the staging dir is wiped each sync. The keyboard extension needs Full Access + `com.apple.security.network.client` to reach Koofr over HTTPS. No folder picker: the sync root is fixed at `<WebDAV root>/Rime_Sync/` (no bookmarks, no security-scoped URLs).
 
@@ -236,8 +247,8 @@ librime reads `custom_phrase.txt` (`db_class: stabledb` → `StableDb` reads the
 ## Logs & logging
 
 - `RimeContext.redirectStderrToLogFile()` (`fopen("a")` + `dup2(fileno(file), STDERR_FILENO)`, fcitx5-ios pattern) runs at the top of `start()` so RIME/glog output lands in `Logs/quill.log`. `pruneGlogFiles` trims stale glog artifacts.
-- Logs are **not shown in the app UI**; the settings page keeps only an 导出日志 `ShareLink` on `exportLogURL()`.
-- Log location (`Paths.logDirectory`): with an App Group both processes write to the **same** `group.art.anjing.quill/Logs/quill.log` — the main app's 导出日志 export therefore also contains keyboard lines. Without an App Group (self-signed) each falls back to its own `Documents/Logs/quill.log`.
+- Keyboard-facing logs are **shown in the keyboard** (menu → 日志 panel: tail preview + export ShareLink + 清空); the main app no longer has a log section.
+- Log location (`Paths.logDirectory`): with an App Group both processes write to the **same** `group.art.anjing.quill/Logs/` — without an App Group (self-signed) each falls back to its own `Documents/Logs/`. `quill.log` holds engine/glog output; `keyboard.log` holds panel/lifecycle/crash nodes.
 
 ## RIME data conventions
 
@@ -289,8 +300,8 @@ xcodebuild test -project Quill.xcodeproj -scheme Quill -sdk iphonesimulator \
 
 ## Conventions for agents
 
-- **README style (user-curated — subtract, never fatten)**: the user manually trimmed the README (removed marketing copy like「开箱即用」and the gesture/操作 table). When touching the README, only correct facts or remove; **do not** reintroduce feature showcases, usage/gesture tables, or a「使用」section. Installation wording stays as-is: unsigned ipa + self-sign via AltStore/Feather. Any interaction numbers quoted in docs (e.g. 长按空格 3 秒) must track `Theme.spaceSyncHoldDuration`.
-- **Do not** reintroduce removed behaviors: deploy path, schema switcher, numeric keyboard types, iCloud/local `Rime_sync` mirror, HTTP log upload, `activeSyncExportDirectory`, `importAllDeviceData`, `setOption` (only `setAsciiMode` exists), the `.return` dead branch (a long-gone `KeyAction.return` path that produced no proxy output — the current `.return` case is alive and emits a newline / commits), or an auto-sync scheduler. The settings UI offers only WebDAV credential storage + connectivity test + credential deletion (keychain survives uninstall, so an explicit delete entry is required).
+- **README style (user-curated — subtract, never fatten)**: the user manually trimmed the README (removed marketing copy like「开箱即用」and the gesture/操作 table). When touching the README, only correct facts or remove; **do not** reintroduce feature showcases, usage/gesture tables, or a「使用」section. Installation wording stays as-is: unsigned ipa + self-sign via AltStore/Feather.
+- **Do not** reintroduce removed behaviors: deploy path, schema switcher, numeric keyboard types, iCloud/local `Rime_sync` mirror, HTTP log upload, `activeSyncExportDirectory`, `importAllDeviceData`, `setOption` (only `setAsciiMode` exists), the `.return` dead branch (a long-gone `KeyAction.return` path that produced no proxy output — the current `.return` case is alive and emits a newline / commits), an auto-sync scheduler, the space-long-press sync trigger, or the shared-Keychain credential store / main-app sync UI. Sync & log UI live in the keyboard; the main app offers only the keyboard-enable row and 关于.
 - **Do not** hand-edit qvshuo-sourced RIME data files.
 - Keep `RimeContext` backend-agnostic: URL/session/WebDAV specifics live in `Sync`, field/IME UI state in `InputState` (KeyboardUI), engine state in `RimeContext` (RimeEngine).
 - Keep layout/grid math pure and unit-tested; avoid hard-coded widths.

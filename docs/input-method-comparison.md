@@ -110,7 +110,7 @@ Quill 的展开网格是对 Hamster/fcitx5 的仿：「chevron 从候选栏挑�
 
 | 项目 | 方式 | 手动/自动 |
 |---|---|---|
-| Quill | WebDAV（长按空格 3s，仅键盘侧触发）本地暂存 staging temp（`tmp/RimeSyncStage`），上传各设备目录 | **手动**（长按空格 3s） |
+| Quill | WebDAV（候选栏左侧菜单 → 同步页，仅键盘侧触发）本地暂存 staging temp（`tmp/RimeSyncStage`），上传各设备目录 | **手动**（同步页按钮） |
 | Squirrel | `rime_sync_user_data` / 可同步 `~/Library/Rime/sync` / WebDAV 用户方案 | 自动或手动（`Sync` 菜单） |
 | Hamster | iCloud（CloudKit）+ `syncDirDictionary` | 自动 |
 | fcitx5-ios | AppGroup + 局域网 HTTP（`32489` / Swifter）+ magic text | （用户可按 mail 手动） |

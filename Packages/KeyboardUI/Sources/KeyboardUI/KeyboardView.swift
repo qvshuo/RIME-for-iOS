@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import Models
 import RimeEngine
+import Sync
 
 public struct KeyboardView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -12,6 +13,12 @@ public struct KeyboardView: View {
     let keyboardType: UIKeyboardType
     let returnKeyType: UIReturnKeyType
     let onKey: (KeyAction) -> Void
+    /// 同步按钮回调（控制器持有超时/toast/会话重建逻辑）。
+    var onSync: () -> Void = {}
+    /// 同步是否进行中（同步页按钮状态）。
+    var isSyncing: Bool = false
+    /// 本次启动是否检测到上次键盘异常退出。
+    var crashedLastRun: Bool = false
 
     /// 主题跟随宿主 App 的深浅色（同 fcitx5-ios），控制器不解析、由 SwiftUI 环境自动重求值。
     private var resolvedTheme: Theme {
@@ -55,13 +62,36 @@ public struct KeyboardView: View {
                     } else {
                         CandidatesBar(
                             rimeContext: rimeContext,
+                            inputState: inputState,
                             theme: theme,
                             isExpanded: $candidatesExpanded,
-                            onSelect: selectAndCollapse
+                            onSelect: selectAndCollapse,
+                            onPanel: { mode in
+                                candidatesExpanded = false
+                                inputState.panelMode = mode
+                            }
                         )
 
-                        keyArea(theme: theme, in: geometry.size.width)
+                        switch inputState.panelMode {
+                        case .input:
+                            keyArea(theme: theme, in: geometry.size.width)
+                                .transition(.opacity)
+                        case .sync:
+                            SyncPanelView(
+                                theme: theme,
+                                isSyncing: isSyncing,
+                                crashedLastRun: crashedLastRun,
+                                onSync: onSync
+                            )
                             .transition(.opacity)
+                        case .log:
+                            LogPanelView(
+                                theme: theme,
+                                rimeContext: rimeContext,
+                                onClear: { onKey(.clearLogs) }
+                            )
+                            .transition(.opacity)
+                        }
 
                         Spacer(minLength: 0)
                     }
@@ -70,12 +100,13 @@ public struct KeyboardView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.1), value: candidatesExpanded)
+            .animation(.easeOut(duration: 0.1), value: inputState.panelMode)
         }
         // 用主题总高度作 SwiftUI 内在尺寸，系统键盘容器按此高度平滑滑入。
         .frame(height: theme.totalHeight)
         .frame(maxWidth: .infinity)
-        // 同步提示：候选栏顶部居中悬浮胶囊（长按预告 / 同步结果），不挡按键点击。
-        // toast 与长按进度只在 `SyncToastOverlay` 自身 body 读取，变化不重求值整棵键盘树。
+        // 同步提示：候选栏顶部居中悬浮胶囊，不挡按键点击。
+        // toast 只在 `SyncToastOverlay` 自身 body 读取，变化不重求值整棵键盘树。
         .overlay(alignment: .top) {
             SyncToastOverlay(inputState: inputState, theme: theme)
         }
@@ -158,7 +189,6 @@ public struct KeyboardView: View {
 
     private func handleKey(_ action: KeyAction) {
         // 同步 toast 展示期间屏蔽所有按键（字母/功能/切换键），待同步结果收起后再恢复。
-        // `.startSync` 在 toast 置位前通过本入口，故长按空格仍能启动同步。
         guard inputState.toast == nil else { return }
         if let transformed = viewModel.consume(action, rimeContext: rimeContext) {
             onKey(transformed)
@@ -173,22 +203,71 @@ public struct KeyboardView: View {
 /// 折叠候选栏：在自身 body 观察候选，刷新只重求值本视图。
 private struct CandidatesBar: View {
     let rimeContext: RimeContext
+    let inputState: InputState
     let theme: Theme
     @Binding var isExpanded: Bool
     let onSelect: (Int) -> Void
+    let onPanel: (KeyboardPanelMode) -> Void
 
     var body: some View {
-        CandidatePanel(
-            candidates: rimeContext.candidates,
-            highlightedIndex: rimeContext.highlightedCandidateIndex,
-            theme: theme,
-            isExpanded: $isExpanded,
-            onSelect: onSelect
-        )
+        HStack(spacing: 0) {
+            // 无候选时左侧出现菜单按钮；功能页内固定展示，供返回输入键盘。
+            if rimeContext.candidates.isEmpty || inputState.panelMode != .input {
+                PanelMenuButton(
+                    theme: theme,
+                    panelMode: inputState.panelMode,
+                    onSelect: onPanel
+                )
+            }
+            CandidatePanel(
+                candidates: rimeContext.candidates,
+                highlightedIndex: rimeContext.highlightedCandidateIndex,
+                theme: theme,
+                isExpanded: $isExpanded,
+                onSelect: onSelect
+            )
+        }
         // 候选为空时自动收起，避免空网格挡住键盘。
         .onChange(of: rimeContext.candidates.isEmpty) { _, empty in
             if empty { isExpanded = false }
         }
+    }
+}
+
+/// 候选栏左侧的菜单按钮：输入态可进入 同步 / 日志 面板；面板内点「键盘」返回。
+private struct PanelMenuButton: View {
+    let theme: Theme
+    let panelMode: KeyboardPanelMode
+    let onSelect: (KeyboardPanelMode) -> Void
+
+    var body: some View {
+        Menu {
+            if panelMode != .input {
+                Button {
+                    onSelect(.input)
+                } label: {
+                    Label("键盘", systemImage: "keyboard")
+                }
+                Divider()
+            }
+            Button {
+                onSelect(.sync)
+            } label: {
+                Label("同步", systemImage: "arrow.triangle.2.circlepath")
+            }
+            Button {
+                onSelect(.log)
+            } label: {
+                Label("日志", systemImage: "doc.text.magnifyingglass")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Color(hex: 0x4D5650))
+                .frame(width: theme.chevronWidth, height: theme.candidateBarHeight + theme.keyboardPadding.top)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("功能菜单")
     }
 }
 
@@ -243,7 +322,6 @@ private struct KeyboardRowView: View {
                         ),
                         theme: theme,
                         shiftState: shiftState,
-                        inputState: inputState,
                         action: onKey
                     )
                     .frame(
@@ -268,72 +346,21 @@ private struct KeyboardRowView: View {
     }
 }
 
-/// 同步悬浮层：在自身 body 作用域观察 `inputState`，toast / 长按预告的出现、
-/// 替换、消失只重求值本视图，不重求值整棵键盘树。两者同位互斥：
-/// 预告胶囊（长按中）→ toast（触发后）。
+/// 同步悬浮层：在自身 body 作用域观察 `inputState`，toast 的出现、
+/// 替换、消失只重求值本视图，不重求值整棵键盘树。
 private struct SyncToastOverlay: View {
     let inputState: InputState
     let theme: Theme
 
-    private enum Phase {
-        case hidden, holdHint, toast
-    }
-
-    private var phase: Phase {
-        if inputState.toast != nil { return .toast }
-        if inputState.syncHoldProgress != nil { return .holdHint }
-        return .hidden
-    }
-
     var body: some View {
         Group {
-            switch phase {
-            case .toast:
-                if let toast = inputState.toast {
-                    SyncToastView(toast: toast, theme: theme)
-                        .padding(.top, 4)
-                }
-            case .holdHint:
-                if let progress = inputState.syncHoldProgress {
-                    SyncHoldHintView(progress: progress, theme: theme)
-                        .padding(.top, 4)
-                }
-            case .hidden:
-                EmptyView()
+            if let toast = inputState.toast {
+                SyncToastView(toast: toast, theme: theme)
+                    .padding(.top, 4)
             }
         }
         .transition(.opacity)
-        .animation(.easeInOut(duration: 0.15), value: phase)
-    }
-}
-
-/// 空格长按同步预告：迷你进度环 + 「继续按住同步」，样式与同步 toast 同一
-/// 视觉语言（同位置、胶囊、keyBackground 填充、共用阴影规格）。进度环随
-/// 按住线性填充，松手消失，满 3 秒交棒给「正在同步…」toast。
-private struct SyncHoldHintView: View {
-    let progress: Double
-    let theme: Theme
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(.secondary, style: StrokeStyle(lineWidth: theme.syncRingLineWidth, lineCap: .round))
-                .frame(width: theme.syncRingSize, height: theme.syncRingSize)
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.05), value: progress)
-            Text("继续按住同步")
-                .font(.system(size: theme.toastFontSize, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, theme.toastHPadding)
-        .padding(.vertical, theme.toastVPadding)
-        .background {
-            Capsule()
-                .fill(theme.keyBackground)
-                .floatingShadow()
-        }
-        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.15), value: inputState.toast != nil)
     }
 }
 
