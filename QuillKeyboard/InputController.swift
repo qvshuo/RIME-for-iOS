@@ -268,11 +268,12 @@ final class InputController: UIInputViewController {
 
     /// 提交当前拼音组合：优先空格确认，否则直接上屏 preedit 原文。
     private func commitPendingComposition() {
-        guard !rimeContext.preedit.isEmpty else { return }
-        if rimeContext.processKey(XK_space) {
+        let preedit = rimeContext.preedit
+        guard !preedit.isEmpty else { return }
+        if rimeContext.commitComposition() {
             syncText()
         } else {
-            commitRawPreedit(rimeContext.preedit)
+            commitRawPreedit(preedit)
         }
     }
 
