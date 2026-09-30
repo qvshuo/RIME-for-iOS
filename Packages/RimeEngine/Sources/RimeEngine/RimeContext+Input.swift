@@ -21,6 +21,18 @@ extension RimeContext {
         return handled
     }
 
+    @discardableResult
+    public func commitComposition() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isReady, session != 0, rimeAPI.find_session!(session) else { return false }
+
+        // 空格可能只被 ASCII 组合接收，不能用按键已处理来判断是否完成上屏。
+        let committed = rimeAPI.commit_composition!(session)
+        refreshContext()
+        return committed
+    }
+
     /// 展开候选网格时把候选补满到 `candidateBatchSize`（热路径只取当前页）。
     /// 只在用户展开网格时调用一次，避免每次敲键都在主线程拉满 77 个候选。
     public func loadExpandedCandidates() {

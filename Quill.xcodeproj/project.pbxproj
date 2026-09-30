@@ -11,6 +11,7 @@
 		0593855B2DE6724D34070E9A /* Sync in Frameworks */ = {isa = PBXBuildFile; productRef = 44265536B2A75A8C692B56E7 /* Sync */; };
 		05DDFDA13511180ED8017FB5 /* ShiftTapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */; };
 		0853183E724CA3FFD629E9AB /* LayoutActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */; };
+		281A1A5B2A7FF302D4DB0A8E /* CompositionCommitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E77E38C18B7C310A56046C08 /* CompositionCommitTests.swift */; };
 		2A5A2CAC377770BEB20A1970 /* WebDAVClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */; };
 		3F4378D52A908AEBCC950E95 /* RimeEngine in Frameworks */ = {isa = PBXBuildFile; productRef = C3E02357FFA6EC42F437584A /* RimeEngine */; };
 		4FB2916766D1AD3C672DCAAC /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = F9189F850E6223AA5030D809 /* Models */; };
@@ -84,6 +85,7 @@
 		BEAD82A913F5E1486C8225D5 /* KeyboardPanelRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPanelRenderingTests.swift; sourceTree = "<group>"; };
 		D684D75A63D67736FD91E365 /* QuillApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuillApp.swift; sourceTree = "<group>"; };
 		E138D7C83C6AE2CF6265B789 /* RimeEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RimeEngine; path = Packages/RimeEngine; sourceTree = SOURCE_ROOT; };
+		E77E38C18B7C310A56046C08 /* CompositionCommitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositionCommitTests.swift; sourceTree = "<group>"; };
 		EB935A3A503C65B092561B45 /* RowLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowLayoutTests.swift; sourceTree = "<group>"; };
 		F5F306CD883ECA58DD8F13DA /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		F81FEA1E583FA942292E8F70 /* QuillKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = QuillKeyboard.entitlements; sourceTree = "<group>"; };
@@ -141,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				8F7F92E59E92D38BC5A0D43D /* CandidateGridLayoutTests.swift */,
+				E77E38C18B7C310A56046C08 /* CompositionCommitTests.swift */,
 				B4B4CBDD09AD5C014B9A4984 /* KeyboardDiagnosticsTests.swift */,
 				BEAD82A913F5E1486C8225D5 /* KeyboardPanelRenderingTests.swift */,
 				B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */,
@@ -345,6 +348,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D693110B075CE79760C2F662 /* CandidateGridLayoutTests.swift in Sources */,
+				281A1A5B2A7FF302D4DB0A8E /* CompositionCommitTests.swift in Sources */,
 				F964142F6BE7E4632B8B9F69 /* KeyboardDiagnosticsTests.swift in Sources */,
 				86DF3A93E1145ADF4E1EC28B /* KeyboardPanelRenderingTests.swift in Sources */,
 				0853183E724CA3FFD629E9AB /* LayoutActionTests.swift in Sources */,
