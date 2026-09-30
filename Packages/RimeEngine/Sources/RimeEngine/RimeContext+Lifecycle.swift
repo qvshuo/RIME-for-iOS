@@ -58,7 +58,7 @@ extension RimeContext {
         lock.unlock()
     }
 
-    /// 准备用户数据目录并清理崩溃残留：建目录、清 leveldb LOCK、写 installation.yaml。
+    /// 准备用户目录和安装配置，写入失败时中止启动。
     private func prepareUserDirectory() throws {
         guard let user = Paths.userDataDirectory else {
             throw RimeError.missingDirectory
