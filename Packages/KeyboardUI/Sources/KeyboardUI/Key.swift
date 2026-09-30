@@ -1,7 +1,7 @@
 import SwiftUI
 import Models
 
-/// 单个按键视图：完全纯色键帽（无阴影/描边/渐变/按压高亮）+ 字符键按压气泡。
+/// 纯色键帽，按压时切换填充色；字符键显示预览气泡。
 public struct Key: View {
     let descriptor: KeyDescriptor
     let theme: Theme

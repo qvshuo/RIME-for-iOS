@@ -105,11 +105,11 @@ Keep candidates/preedit reads in child views so typing does not invalidate the k
 
 ### RimeContext essentials
 
-- **`RimeTraits.data_size` must be set** to `sizeof(RimeTraits)` or optional fields (`log_dir`, …) are ignored.
+- **`RimeTraits.data_size` must be initialized** with `rimeStructInit` (`sizeof(RimeTraits) - sizeof(data_size)`) or optional fields (`log_dir`, …) are ignored.
 - **`RimeContext` / `RimeCommit` are initialized with `RIME_STRUCT(Type, var)`** so `data_size` is nonzero; otherwise `RimeGetContext`/`RimeGetCommit` return `False` and the keyboard shows no preedit/candidates even though keys are "handled".
 - **Commit text must be captured immediately**: `RimeGetCommit` returns the commit only once per composition; `refreshContext()` consumes it into internal storage. Read it via `pollCommit()` only.
 - **`setup()` runs once per process** (`isSetup` flag + lock). Calling `InitGoogleLogging()` twice crashes inside glog.
-- Session is **lazily created on the keypress thread** (`createSessionIfNeeded()`) — never create/use a session across threads. `start()` pre-creates one so the first keypress is cheap.
+- Session is **lazily created under the engine lock** (`createSessionIfNeeded()`). `start()` pre-creates one on the main thread so the first keypress is cheap; synchronization and reload run on the serial maintenance queue.
 - After creating a session the bridge selects **`luna_pinyin`** (fallback: first available schema) and sets `ascii_mode=false`. `RimeContext` no longer persists a preferred schema; there is **no schema switcher UI**.
 - All RIME access is serialized with `NSRecursiveLock`.
 
@@ -257,7 +257,7 @@ Run `scripts/build-prebuilt-data.sh` (macOS-native librime + `rime_deployer`) af
 - **Extension memory ceiling ~77MB**: full deploy gets the extension killed by Jetsam (keyboard appears then exits ~2s later) — the usual "keyboard闪退" root cause. Data must remain prebuilt.
 - **`data_size` trinity**: `RimeTraits` / `RimeContext` / `RimeCommit` all need nonzero `data_size` or you get "keys handled but no preedit/candidates/commit".
 - **Commit is one-shot**: consume through `pollCommit()`; a second `RimeGetContext`/`RimeGetCommit` call sees nothing.
-- **Never touch a session from another thread**; `createSessionIfNeeded()` runs on the keypress thread.
+- **Never access a session concurrently**: input uses the main thread, maintenance/reload uses its serial queue, and all engine operations hold the recursive engine lock.
 - **Never unlink LevelDB LOCK files**: locks are released by the kernel when a process exits; deleting a lock file can let another process lock a new inode while the database is still in use.
 - **`reduce_english_filter` runs but is a no-op with the current data (investigated, kept)**: it only scans the first `idx` candidates and English short words never rank high here — for input `rug`, Chinese candidates (quality ≈ 1.87 = `exp(normalized_weight)` + `initial_quality` 1.2 + length term) beat melt_eng's `rug` (quality = `initial_quality` 1.1 ≈ rank #44), outside the scan window. The rime-ice doc behavior assumes English ranks #1. Net effect: short English words are always at the bottom anyway; the config is harmless. Verified with a macOS-host librime repro against the same prebuilt data.
 
