@@ -19,14 +19,8 @@ final class InputController: UIInputViewController {
     private var lastKeyboardType: UIKeyboardType?
     private var lastReturnKeyType: UIReturnKeyType?
 
-    /// 手动同步（长按空格键 3 秒触发）是否进行中，防止重复触发。
-    private var isSyncing = false
-
-    /// `.completed / .failed` toast 的自动收起任务。
-    private var toastDismissTask: Task<Void, Never>?
-
     deinit {
-        toastDismissTask?.cancel()
+        KeyboardDiagnostics.shared.endSession(sessionID.uuidString)
         let rime = rimeContext
         let owner = sessionID
         WebDAVSync.runAfterSync { rime.releaseSession(owner) }
@@ -34,12 +28,15 @@ final class InputController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        rimeContext.claimSession(sessionID)
 
         // 只 start() 不部署：全量部署超扩展 ~77MB 内存上限会被 Jetsam 杀死，
         // 数据来自 Bundle 内预构建的 SharedSupport/build。
+        rimeContext.claimSession(sessionID)
+        KeyboardDiagnostics.shared.beginSession(sessionID.uuidString)
         rimeContext.log("Keyboard: viewDidLoad")
         Task {
+            // 已在维护中的进程不重复启动引擎，避免主线程等待后台持有的引擎锁。
+            guard !inputState.isSyncing else { return }
             await rimeContext.start()
         }
 
@@ -57,6 +54,7 @@ final class InputController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         resetDoubleSpaceState()
+        KeyboardDiagnostics.shared.record("键盘显示")
         refreshInputTextState()
         refreshKeyboardContext()
         // viewDidLoad 挂载会有巨大布局位移，须在此挂载；幂等防重复 addChild / 约束累积。
@@ -222,48 +220,10 @@ final class InputController: UIInputViewController {
         }
     }
 
-    /// 长按空格触发的手动同步；完成后按需重建会话让合并的新词生效。
     private func startManualSync() {
-        guard !isSyncing else { return }
-        // 有组合时不开始：打断会丢 preedit / 候选。
         guard rimeContext.preedit.isEmpty else { return }
-        isSyncing = true
-        toastDismissTask?.cancel()
-        inputState.toast = .started
-        rimeContext.log("Keyboard: manual WebDAV sync (space long-press)")
-        let rime = rimeContext
-        // 弱引用：键盘收起时不应把控制器保留到同步结束（最坏 15s+）。
-        Task { [weak self] in
-            let success = await WebDAVSync.syncWithTimeout(.seconds(60))
-            rime.log("Keyboard: manual WebDAV sync done success=\(success)")
-            await MainActor.run {
-                guard let self else { return }
-                if self.rimeContext.preedit.isEmpty {
-                    // 在同步专用串行队列重建：僵尸同步可能持引擎锁，主线程调用会阻塞到它结束。
-                    // 捕获 context 单例而非 self，避免闭包强持有控制器。
-                    let rimeForRecreate = self.rimeContext
-                    WebDAVSync.runAfterSync {
-                        rimeForRecreate.recreateSession()
-                    }
-                }
-                let toast: SyncToast = success ? .completed : .failed
-                self.inputState.toast = toast
-                self.isSyncing = false
-                self.scheduleToastDismissal(delay: toast == .failed ? 4.0 : 2.5)
-            }
-        }
-    }
-
-    /// `.completed / .failed` 停留片刻后自动收起；`started` 由同步结束直接替换。
-    private func scheduleToastDismissal(delay: TimeInterval) {
-        toastDismissTask?.cancel()
-        let state = inputState
-        let task = Task { [weak state] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            await MainActor.run { state?.toast = nil }
-        }
-        toastDismissTask = task
+        resetDoubleSpaceState()
+        inputState.sync.start()
     }
 
     /// 提交当前拼音组合：优先空格确认，否则直接上屏 preedit 原文。
