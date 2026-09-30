@@ -30,11 +30,15 @@ public final class WebDAVClient: Sendable {
 
     public init(credentials: WebDAVCredentials) {
         self.credentials = credentials
-        let config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 120
         config.timeoutIntervalForResource = 300
         config.waitsForConnectivity = true
         self.session = URLSession(configuration: config)
+    }
+
+    deinit {
+        session.invalidateAndCancel()
     }
 
     // MARK: - 基础请求
@@ -163,6 +167,7 @@ final class PROPFINDParser: NSObject, XMLParserDelegate {
     private let basePath: String
     private let baseAbsoluteURL: URL
 
+    private var sawMultiStatus = false
     private var currentHref: String?
     private var isInHref = false
     private var isInResourceType = false
@@ -174,11 +179,12 @@ final class PROPFINDParser: NSObject, XMLParserDelegate {
         self.basePath = basePath
         self.baseAbsoluteURL = baseAbsoluteURL
         super.init()
+        self.parser.shouldProcessNamespaces = true
         self.parser.delegate = self
     }
 
     func parse() throws -> [WebDAVClient.Entry] {
-        guard parser.parse() else { throw WebDAVClient.WebDAVError.invalidResponse }
+        guard parser.parse(), sawMultiStatus else { throw WebDAVClient.WebDAVError.invalidResponse }
         return entries
     }
 
@@ -187,6 +193,8 @@ final class PROPFINDParser: NSObject, XMLParserDelegate {
                 attributes attributeDict: [String: String] = [:]) {
         let local = elementName.split(separator: ":").last.map(String.init) ?? elementName
         switch local {
+        case "multistatus":
+            sawMultiStatus = namespaceURI == "DAV:"
         case "href":
             isInHref = true
             currentHref = ""
