@@ -30,7 +30,7 @@ targets:
       - path: App
     preBuildScripts:
       - name: Copy SharedSupport
-        # ditto 会整体替换目标目录；cp -R 到已存在的目录会嵌套出 SharedSupport/SharedSupport。
+        # 先删除目标目录，避免增量构建嵌套出 SharedSupport/SharedSupport。
         script: rm -rf "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/SharedSupport" && cp -R "${SRCROOT}/Resources/SharedSupport" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/SharedSupport"
         basedOnDependencyAnalysis: false
         outputPaths:
@@ -119,6 +119,8 @@ targets:
         product: RimeEngine
       - package: Models
         product: Models
+      - package: Sync
+        product: Sync
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: art.anjing.quill.keyboarduitests

@@ -72,6 +72,14 @@ struct CandidateGridLayoutTests {
         #expect(starts.count == rows.count + 1)
     }
 
+    @Test("同一字体不同字号不会复用错误的宽度")
+    func textWidthIncludesFontSize() {
+        let text = "缓存字号回归测试"
+        let small = CandidateGridLayout.textWidth(text, font: .systemFont(ofSize: 12))
+        let large = CandidateGridLayout.textWidth(text, font: .systemFont(ofSize: 24))
+        #expect(large > small * 1.9)
+    }
+
     @Test("textWidth 对常规文本返回正宽度")
     func textWidthIsPositive() {
         #expect(CandidateGridLayout.textWidth("中文", font: font) > 0)

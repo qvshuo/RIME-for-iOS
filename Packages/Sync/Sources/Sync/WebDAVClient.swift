@@ -6,19 +6,21 @@ import Foundation
 public final class WebDAVClient: Sendable {
     public enum WebDAVError: Error, LocalizedError {
         case invalidURL
+        case invalidResponse
         case notAuthenticated
         case serverError(statusCode: Int)
 
         public var errorDescription: String? {
             switch self {
             case .invalidURL: return "URL 无效"
+            case .invalidResponse: return "服务器返回了无效的目录列表"
             case .notAuthenticated: return "未认证（用户名/密码错误）"
             case .serverError(let code): return "服务器错误（HTTP \(code)）"
             }
         }
     }
 
-    public struct Entry {
+    public struct Entry: Sendable, Equatable {
         public let name: String
         public let isDirectory: Bool
     }
@@ -42,14 +44,23 @@ public final class WebDAVClient: Sendable {
         return "Basic \(data.base64EncodedString())"
     }
 
-    private func makeURL(relativePath: String) -> URL? {
-        // 拼接根 URL + 相对路径，处理百分号编码（目录名/文件名可能含空格等）。
-        let trimmed = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let base = credentials.normalizedBaseURL
-        guard let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
-            return nil
+    static func isSafeRelativePath(_ path: String) -> Bool {
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        return !components.isEmpty && components.allSatisfy {
+            !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("\\")
+                && !$0.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
         }
-        return URL(string: base + encoded)
+    }
+
+    func makeURL(relativePath: String) -> URL? {
+        guard Self.isSafeRelativePath(relativePath),
+              let base = URL(string: credentials.normalizedBaseURL),
+              base.scheme?.lowercased() == "https", base.host != nil,
+              base.user == nil, base.password == nil,
+              base.query == nil, base.fragment == nil else { return nil }
+        return relativePath.split(separator: "/").reduce(base) {
+            $0.appendingPathComponent(String($1))
+        }
     }
 
     /// 统一请求执行：打 auth 头、区分 data/upload、把非 HTTP 响应、401/403 与
@@ -97,8 +108,8 @@ public final class WebDAVClient: Sendable {
         request.httpBody = Data(body.utf8)
 
         let data = try await perform(request) { (200..<300).contains($0) }
-        let basePath = url.path.removingPercentEncoding ?? url.path
-        return parseMultiStatus(data: data, basePath: basePath, baseAbsoluteURL: url)
+        let basePath = url.path
+        return try parseMultiStatus(data: data, basePath: basePath, baseAbsoluteURL: url)
     }
 
     // MARK: - 下载
@@ -139,15 +150,15 @@ public final class WebDAVClient: Sendable {
 
     /// 解析 WebDAV multistatus XML，返回 `relativePath` 下的一级子项。
     /// `basePath` 用于去掉服务器返回的绝对路径前缀，只保留相对名。
-    private func parseMultiStatus(data: Data, basePath: String, baseAbsoluteURL: URL) -> [Entry] {
-        guard let xml = String(data: data, encoding: .utf8) else { return [] }
+    private func parseMultiStatus(data: Data, basePath: String, baseAbsoluteURL: URL) throws -> [Entry] {
+        guard let xml = String(data: data, encoding: .utf8) else { throw WebDAVError.invalidResponse }
         let parser = PROPFINDParser(xml: xml, basePath: basePath, baseAbsoluteURL: baseAbsoluteURL)
-        return parser.parse()
+        return try parser.parse()
     }
 }
 
 /// 极简 PROPFIND XML 解析：只认 `<response><href>…</href>…<resourcetype><collection/></resourcetype></response>`。
-private final class PROPFINDParser: NSObject, XMLParserDelegate {
+final class PROPFINDParser: NSObject, XMLParserDelegate {
     private let parser: XMLParser
     private let basePath: String
     private let baseAbsoluteURL: URL
@@ -166,8 +177,8 @@ private final class PROPFINDParser: NSObject, XMLParserDelegate {
         self.parser.delegate = self
     }
 
-    func parse() -> [WebDAVClient.Entry] {
-        parser.parse()
+    func parse() throws -> [WebDAVClient.Entry] {
+        guard parser.parse() else { throw WebDAVClient.WebDAVError.invalidResponse }
         return entries
     }
 
@@ -217,30 +228,14 @@ private final class PROPFINDParser: NSObject, XMLParserDelegate {
 
     /// 把服务器返回的 href 转成相对路径。href 可能是绝对 URL、绝对路径、或相对路径。
     private func relativeName(fromHref href: String) -> String? {
-        let decoded = href.removingPercentEncoding ?? href
-        let stripped = decoded.split(separator: "?").first.map(String.init) ?? decoded
-        var path: String
-        if let url = URL(string: stripped), url.scheme != nil {
-            path = url.path
-        } else {
-            path = stripped
-        }
-
-        // 相对 href：去掉查询串后取最后一段，排除等于集合名自身的条目。
-        if !path.hasPrefix("/") {
-            let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard !trimmed.isEmpty else { return nil }
-            let name = trimmed.split(separator: "/").last.map(String.init) ?? trimmed
-            let baseLast = basePath.split(separator: "/").last.map(String.init) ?? basePath
-            return name == baseLast ? nil : name
-        }
-
-        // 绝对 path/URL：basePath 补尾斜杠做边界匹配，避免 `Rime_Sync2` 误匹配 `Rime_Sync`。
+        let trimmed = href.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed, relativeTo: baseAbsoluteURL.appendingPathComponent(""))?.absoluteURL,
+              url.host == baseAbsoluteURL.host else { return nil }
         let base = basePath.hasSuffix("/") ? basePath : basePath + "/"
+        let path = url.path
         guard path.hasPrefix(base) else { return nil }
-        let relative = String(path.dropFirst(base.count))
-        let trimmed = relative.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !trimmed.isEmpty else { return nil }
-        return trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        let name = String(path.dropFirst(base.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard WebDAVClient.isSafeRelativePath(name), !name.contains("/") else { return nil }
+        return name
     }
 }

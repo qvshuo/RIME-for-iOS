@@ -7,8 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0593855B2DE6724D34070E9A /* Sync in Frameworks */ = {isa = PBXBuildFile; productRef = 44265536B2A75A8C692B56E7 /* Sync */; };
 		05DDFDA13511180ED8017FB5 /* ShiftTapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */; };
 		0853183E724CA3FFD629E9AB /* LayoutActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */; };
+		2A5A2CAC377770BEB20A1970 /* WebDAVClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */; };
 		3F4378D52A908AEBCC950E95 /* RimeEngine in Frameworks */ = {isa = PBXBuildFile; productRef = C3E02357FFA6EC42F437584A /* RimeEngine */; };
 		4FB2916766D1AD3C672DCAAC /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = F9189F850E6223AA5030D809 /* Models */; };
 		7751BF9CF58BF78FE0747D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D38D15D82BEF4CEED3444A3 /* Assets.xcassets */; };
@@ -65,6 +67,7 @@
 		2F4375A49C9A6A45AC99B711 /* Sync */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Sync; path = Packages/Sync; sourceTree = SOURCE_ROOT; };
 		30D468055C2C2BD10C72597C /* SyncToastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncToastTests.swift; sourceTree = "<group>"; };
 		39505C29727ACD13151CC29C /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Models; path = Packages/Models; sourceTree = SOURCE_ROOT; };
+		4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVClientTests.swift; sourceTree = "<group>"; };
 		762A754797A6ACC34A3FF6D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7D38D15D82BEF4CEED3444A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8C030032E8865EEAA81E2EC9 /* InputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputController.swift; sourceTree = "<group>"; };
@@ -99,6 +102,7 @@
 				8F72F69F0370F30221A4788A /* KeyboardUI in Frameworks */,
 				3F4378D52A908AEBCC950E95 /* RimeEngine in Frameworks */,
 				4FB2916766D1AD3C672DCAAC /* Models in Frameworks */,
+				0593855B2DE6724D34070E9A /* Sync in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -145,6 +149,7 @@
 				B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */,
 				30D468055C2C2BD10C72597C /* SyncToastTests.swift */,
 				2B6E8DA818C2039DF8F8DC30 /* ThemeTests.swift */,
+				4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */,
 			);
 			path = QuillKeyboardUITests;
 			sourceTree = "<group>";
@@ -249,6 +254,7 @@
 				2541843732188F8E55BE7392 /* KeyboardUI */,
 				C3E02357FFA6EC42F437584A /* RimeEngine */,
 				F9189F850E6223AA5030D809 /* Models */,
+				44265536B2A75A8C692B56E7 /* Sync */,
 			);
 			productName = QuillKeyboardUITests;
 			productReference = FC209FEECE0A58329F76E74F /* QuillKeyboardUITests.xctest */;
@@ -346,6 +352,7 @@
 				05DDFDA13511180ED8017FB5 /* ShiftTapTests.swift in Sources */,
 				9705200D2B527B8A601BF382 /* SyncToastTests.swift in Sources */,
 				A6AED39B558435213856CA79 /* ThemeTests.swift in Sources */,
+				2A5A2CAC377770BEB20A1970 /* WebDAVClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -669,6 +676,10 @@
 		3D06582F475F825F8DF123D6 /* KeyboardUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KeyboardUI;
+		};
+		44265536B2A75A8C692B56E7 /* Sync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Sync;
 		};
 		60F2FC1695A415863F437D01 /* RimeEngine */ = {
 			isa = XCSwiftPackageProductDependency;

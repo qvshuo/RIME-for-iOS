@@ -61,32 +61,45 @@ public enum WebDAVSync {
     public static func sync() async -> Bool {
         let context = RimeContext.shared
         context.log("WebDAVSync: begin")
-        if inFlight.withLock({ $0 }) {
+        let acquired = inFlight.withLock { running in
+            guard !running else { return false }
+            running = true
+            return true
+        }
+        guard acquired else {
             context.log("WebDAVSync: already in flight, skip")
             return false
         }
-        inFlight.withLock { $0 = true }
         defer { inFlight.withLock { $0 = false } }
         guard let credentials = WebDAVKeychainStore.load() else {
             context.log("WebDAVSync: no credentials saved")
             return false
         }
         // 引擎层保持后端无关，安装 ID 由同步层按保存的凭据设置。
-        RimeContext.installationID = credentials.installationID?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Quill"
+        let savedID = credentials.installationID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        RimeContext.installationID = savedID.isEmpty ? "Quill" : savedID
 
         let client = WebDAVClient(credentials: credentials)
-        let rootPath = syncRootPath
+        let savedPath = credentials.syncPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rootPath = savedPath.isEmpty ? "Rime_Sync" : savedPath
+        let ownID = RimeContext.installationID
+        guard WebDAVClient.isSafeRelativePath(rootPath),
+              WebDAVClient.isSafeRelativePath(ownID), !ownID.contains("/") else {
+            context.log("WebDAVSync: invalid sync directory or installation ID")
+            return false
+        }
 
         do {
             let staging = stagingDirectory
             try? FileManager.default.removeItem(at: staging)
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: staging) }
+            var transferFailed = false
 
             var devices: [String] = []
             do {
                 let entries = try await client.listDirectory(relativePath: rootPath)
-                devices = entries.filter(\.isDirectory).map(\.name)
+                devices = entries.filter(\.isDirectory).map(\.name).sorted()
                 context.log("WebDAVSync: devices under Rime_Sync/ = \(devices)")
             } catch let error as WebDAVClient.WebDAVError {
                 // 404 = 目录还不存在，跳过下载，直接导出+上传。
@@ -106,6 +119,7 @@ public enum WebDAVSync {
                     let entries = try await client.listDirectory(relativePath: remoteDir)
                     files = entries.filter { !$0.isDirectory && relevantFile($0.name) }.map(\.name)
                 } catch {
+                    transferFailed = true
                     context.log("WebDAVSync: list \(device) failed: \(error.localizedDescription)")
                     continue
                 }
@@ -118,6 +132,7 @@ public enum WebDAVSync {
                         try data.write(to: localDir.appendingPathComponent(file), options: .atomic)
                         context.log("WebDAVSync: downloaded \(device)/\(file) (\(data.count) bytes)")
                     } catch {
+                        transferFailed = true
                         context.log("WebDAVSync: download \(device)/\(file) failed: \(error.localizedDescription)")
                     }
                 }
@@ -132,8 +147,8 @@ public enum WebDAVSync {
                     let source = deviceDir.appendingPathComponent("custom_phrase.txt")
                     if FileManager.default.fileExists(atPath: source.path) {
                         let target = userDir.appendingPathComponent("custom_phrase.txt")
-                        try? FileManager.default.removeItem(at: target)
-                        try? FileManager.default.copyItem(at: source, to: target)
+                        // 原子替换，写入失败时保留已有短语。
+                        try Data(contentsOf: source).write(to: target, options: .atomic)
                         context.log("WebDAVSync: applied custom_phrase.txt from \(device)")
                     }
                 }
@@ -143,19 +158,19 @@ public enum WebDAVSync {
             let result = try await Self.runLibrimeSync(context: context, staging: staging)
             context.log("WebDAVSync: librime sync done, export dir = \(result.path)")
 
-            // 上传本机导出目录回 WebDAV。单个文件读写失败不中断整体同步，
-            // 仅记录日志（跳过该文件）。
-            let ownID = RimeContext.installationID
+            // 尽量完成其余文件，但任何传输失败都必须反映在最终结果中。
             let ownDir = staging.appendingPathComponent(ownID, isDirectory: true)
             // 首次同步时同步根目录可能尚未创建，先 MKCOL 根目录再建本机目录
             // （父目录缺失时 MKCOL 子目录会返回 409；MKCOL 已存在目录返回 405，视为成功）。
             try await client.createDirectory(relativePath: rootPath)
             try await client.createDirectory(relativePath: "\(rootPath)/\(ownID)")
-            if let files = try? FileManager.default.contentsOfDirectory(
+            let files = try FileManager.default.contentsOfDirectory(
                 at: ownDir, includingPropertiesForKeys: nil
-            ) {
+            )
+            do {
                 for file in files where relevantFile(file.lastPathComponent) {
                     guard let data = try? Data(contentsOf: file) else {
+                        transferFailed = true
                         context.log("WebDAVSync: read \(ownID)/\(file.lastPathComponent) failed, skip")
                         continue
                     }
@@ -164,20 +179,21 @@ public enum WebDAVSync {
                         try await client.upload(relativePath: remote, data: data)
                         context.log("WebDAVSync: uploaded \(ownID)/\(file.lastPathComponent) (\(data.count) bytes)")
                     } catch {
+                        transferFailed = true
                         context.log("WebDAVSync: upload \(ownID)/\(file.lastPathComponent) failed: \(error.localizedDescription)")
                     }
                 }
             }
-            context.log("WebDAVSync: completed")
-            return true
+            context.log("WebDAVSync: completed success=\(!transferFailed)")
+            return !transferFailed
         } catch {
             context.log("WebDAVSync: failed: \(error.localizedDescription)")
             return false
         }
     }
 
-    /// 带超时的同步，超时按失败处理。用「竞速」而非「取消」：中途取消会让
-    /// `withCheckedThrowingContinuation` 与队列回调双 resume；输家在后台跑完即被丢弃。
+    /// 带超时的同步，超时按失败处理。用「竞速」而非「取消」：librime 的阻塞维护操作无法中断，
+    /// 超时后仍需持有在途标记，直到实际同步完成。
     @discardableResult
     public static func syncWithTimeout(_ timeout: Duration = .seconds(60)) async -> Bool {
         await withCheckedContinuation { continuation in

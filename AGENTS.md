@@ -272,7 +272,7 @@ Run `scripts/build-prebuilt-data.sh` (macOS-native librime + `rime_deployer`) af
 - **`data_size` trinity**: `RimeTraits` / `RimeContext` / `RimeCommit` all need nonzero `data_size` or you get "keys handled but no preedit/candidates/commit".
 - **Commit is one-shot**: consume through `pollCommit()`; a second `RimeGetContext`/`RimeGetCommit` call sees nothing.
 - **Never touch a session from another thread**; `createSessionIfNeeded()` runs on the keypress thread.
-- **Leveldb LOCK residue**: crash leftovers block the user dict on next start — cleaned at startup, but only LOCK files that can be flocked non-blocking (no live holder); with an App Group the sibling process may hold a live lock, and blindly unlinking it would let two leveldb instances run against the same DB.
+- **Never unlink LevelDB LOCK files**: locks are released by the kernel when a process exits; deleting a lock file can let another process lock a new inode while the database is still in use.
 - **`reduce_english_filter` runs but is a no-op with the current data (investigated, kept)**: it only scans the first `idx` candidates and English short words never rank high here — for input `rug`, Chinese candidates (quality ≈ 1.87 = `exp(normalized_weight)` + `initial_quality` 1.2 + length term) beat melt_eng's `rug` (quality = `initial_quality` 1.1 ≈ rank #44), outside the scan window. The rime-ice doc behavior assumes English ranks #1. Net effect: short English words are always at the bottom anyway; the config is harmless. Verified with a macOS-host librime repro against the same prebuilt data.
 
 ## Testing

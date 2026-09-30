@@ -9,12 +9,12 @@ extension RimeContext {
     /// 阻塞性初始化在后台任务完成，会话创建与可观测状态发布回主线程。
     @MainActor
     public func start() async {
-        redirectStderrToLogFile()
         guard beginStart() else {
-            NSLog("Quill RIME start: already starting, skip")
+            createSessionIfNeeded()
             return
         }
         defer { endStart() }
+        redirectStderrToLogFile()
 
         do {
             try await Task.detached(priority: .userInitiated) { [weak self] in
@@ -37,7 +37,7 @@ extension RimeContext {
     /// 串行化守卫：返回 true 表示获得启动权。
     private func beginStart() -> Bool {
         lock.lock()
-        if isStarting {
+        if isStarting || isReady {
             lock.unlock()
             return false
         }
@@ -65,37 +65,8 @@ extension RimeContext {
             return
         }
         try? FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
-        // 清理因崩溃未释放的 leveldb LOCK 文件，避免键盘/主 App 反复启动时打不开用户词库。
-        cleanupStaleLocks(in: user)
-        // 确保 installation.yaml 使用当前安装 ID（同步目录名）。
+        // 内核会在进程退出时释放数据库锁；删除 LOCK 会破坏仍在使用的 inode 的互斥。
         ensureInstallationInfo()
-    }
-
-    private func cleanupStaleLocks(in directory: URL) {
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else { return }
-        for case let fileURL as URL in enumerator where fileURL.lastPathComponent == "LOCK" {
-            // App Group 下主 App 与键盘扩展共享用户目录：对方进程可能正持有活锁。
-            // 仅删除能成功拿到非阻塞 flock 的 LOCK（无持有者 = 崩溃残留），
-            // 直接 unlink 活锁会让两个 leveldb 对同一数据库各自加锁新 inode，失去互斥。
-            if isUnheld(fileURL) {
-                try? FileManager.default.removeItem(at: fileURL)
-            }
-        }
-    }
-
-    /// 尝试对文件加非阻塞排他 flock；成功说明没有任何进程持有（leveldb 用同款
-    /// 方式持锁），失败（EWOULDBLOCK）说明有活的持有者。
-    private func isUnheld(_ url: URL) -> Bool {
-        let fd = open(url.path, O_RDONLY)
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { return false }
-        flock(fd, LOCK_UN)
-        return true
     }
 
     private func setupOnce() throws {
@@ -191,9 +162,18 @@ extension RimeContext {
     public func recreateSession() {
         lock.lock()
         defer { lock.unlock() }
-        guard isReady else { return }
+        guard isReady, commitText.isEmpty else { return }
+        // 在引擎锁内复查真实组合；UI 快照可能已过期，不能据此销毁正在输入的会话。
+        if session != 0 {
+            var context = RimeContext_stdbool()
+            rimeStructInit(&context)
+            if rimeAPI.get_context!(session, &context) {
+                let composing = context.composition.length > 0
+                _ = rimeAPI.free_context!(&context)
+                guard !composing else { return }
+            }
+        }
         destroySession()
         createSessionIfNeeded()
-        refreshContext()
     }
 }

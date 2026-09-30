@@ -69,11 +69,11 @@ extension RimeContext {
                 .components(separatedBy: "\n") ?? [])
                 .map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("installation_id:") }
-            lines.insert("installation_id: \"\(Self.installationID)\"", at: 0)
+            lines.insert("installation_id: \(yamlString(Self.installationID))", at: 0)
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("backup_config_files:") }
             lines.append("backup_config_files: true")
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("sync_dir:") }
-            lines.append("sync_dir: \"\(syncDir.path)\"")
+            lines.append("sync_dir: \(yamlString(syncDir.path))")
             do {
                 try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
             } catch {
@@ -82,6 +82,12 @@ extension RimeContext {
             }
         }
         log("sync_dir = \(syncDir.path)")
+    }
+
+    // JSON 字符串也是合法 YAML 标量，避免安装 ID 和目录中的引号破坏配置。
+    private func yamlString(_ value: String) -> String {
+        let data = try! JSONEncoder().encode(value)
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// 跑一次 librime 同步：把本机用户词典导出到同步暂存目录的

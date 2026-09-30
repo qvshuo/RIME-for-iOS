@@ -25,7 +25,9 @@ final class InputController: UIInputViewController {
     private var toastDismissTask: Task<Void, Never>?
 
     deinit {
-        rimeContext.destroySession()
+        toastDismissTask?.cancel()
+        let rime = rimeContext
+        WebDAVSync.runAfterSync { rime.destroySession() }
     }
 
     override func viewDidLoad() {
@@ -51,6 +53,7 @@ final class InputController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        resetDoubleSpaceState()
         refreshInputTextState()
         refreshKeyboardContext()
         // viewDidLoad 挂载会有巨大布局位移，须在此挂载；幂等防重复 addChild / 约束累积。

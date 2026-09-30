@@ -23,7 +23,7 @@ public enum LayoutParser {
 
     public static func load(_ name: String, from bundle: Bundle? = nil) throws -> LayoutDescriptor {
         let bundle = bundle ?? Bundle.module
-        let key = "\(name)@\(bundle.bundleIdentifier ?? "module")"
+        let key = "\(bundle.bundleURL.path)/\(name)"
 
         if let cached = cache.withLock({ $0[key] }) {
             return cached

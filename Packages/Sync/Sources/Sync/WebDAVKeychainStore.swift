@@ -173,7 +173,7 @@ public enum WebDAVKeychainStore {
         guard let group else { return nil }
         // 默认 access group = `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`
         // 或自签下就是 bundle ID。取 bundle ID 之前的部分作为 Team 前缀。
-        let bundleID = "art.anjing.quill"
+        guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
         if group.hasSuffix(bundleID), group.count > bundleID.count {
             let prefix = String(group.dropLast(bundleID.count))
             return prefix + "art.anjing.quill.shared"

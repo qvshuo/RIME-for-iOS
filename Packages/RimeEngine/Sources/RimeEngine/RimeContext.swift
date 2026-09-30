@@ -3,11 +3,8 @@ import Observation
 import Models
 @preconcurrency import RimeEngineC
 
-/// 进程内单例 RIME 上下文：Swift 直接持有 `RimeApi_stdbool` 调用 librime C API。
-///
-/// 生命周期：每进程只 `start()` 一次（setup → initialize，不 deploy），setup 完成
-/// 前 `processKey` 丢键。方法按职责拆在 `RimeContext+*.swift`；本文件只保留声明
-/// 与共享内部状态。librime 非线程安全：所有 C API 调用都持 `lock` 执行。
+/// librime 的进程内入口。引擎操作持锁串行执行，UI 状态在主线程发布。
+/// 只加载随包预构建的数据，避免运行时部署超过键盘扩展的内存预算。
 @Observable
 public final class RimeContext: @unchecked Sendable {
     public static let shared = RimeContext()
@@ -17,16 +14,16 @@ public final class RimeContext: @unchecked Sendable {
     let rimeAPI: RimeApi_stdbool = rime_get_api_stdbool()!.pointee
     let lock = NSRecursiveLock()
 
-    var isSetup = false
-    var isStarting = false
+    @ObservationIgnored var isSetup = false
+    @ObservationIgnored var isStarting = false
     /// setup 完成、可以处理按键。
-    var isReady = false
-    var session: RimeSessionId = 0
+    @ObservationIgnored var isReady = false
+    @ObservationIgnored var session: RimeSessionId = 0
     /// 会话创建后应写入的 `ascii_mode` 初始值；会话未创建时先 pending。
     /// `.asciiCapable` 字段需要英文模式，`.default` 需要中文模式。
-    var pendingAsciiMode: Bool = false
+    @ObservationIgnored var pendingAsciiMode: Bool = false
 
-    /// 每次刷新一次性取回的候选数（初始直接 77，支持展开网格）。
+    /// 展开网格时的候选上限；按键热路径只读取当前页。
     let candidateBatchSize = 77
 
     // MARK: - Observable state

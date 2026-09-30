@@ -16,7 +16,7 @@ enum CandidateGridLayout {
     /// 候选文本的渲染宽度（用与 `candidateFont` 一致的 `UIFont` 测量）。
     /// 缓存键含字体名：同字号不同 weight 的字体宽度不同，只按 pointSize 会串值。
     static func textWidth(_ text: String, font: UIFont) -> CGFloat {
-        let key = "\(font.fontDescriptor.postscriptName)|\(text)"
+        let key = "\(font.fontDescriptor.postscriptName)|\(font.pointSize)|\(text)"
         if let width = widthCache.withLock({ $0[key] }) {
             return width
         }
