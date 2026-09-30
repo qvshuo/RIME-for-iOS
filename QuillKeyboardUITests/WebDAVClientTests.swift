@@ -34,7 +34,9 @@ struct WebDAVClientTests {
 
     @Test("损坏的目录响应必须报错，不能当成空目录成功")
     func malformedDirectory() {
-        let parser = PROPFINDParser(xml: "<broken>", basePath: "/dav", baseAbsoluteURL: URL(string: "https://example.com/dav")!)
-        #expect(throws: WebDAVClient.WebDAVError.self) { try parser.parse() }
+        for xml in ["<broken>", "<html><body>Login</body></html>", "<multistatus/>"] {
+            let parser = PROPFINDParser(xml: xml, basePath: "/dav", baseAbsoluteURL: URL(string: "https://example.com/dav")!)
+            #expect(throws: WebDAVClient.WebDAVError.self) { try parser.parse() }
+        }
     }
 }
