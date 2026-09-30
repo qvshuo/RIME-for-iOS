@@ -25,68 +25,60 @@ extension RimeContext {
 
     /// 让 installation.yaml 的 `sync_dir` 指向同步暂存目录，并记录导出目录。
     /// 同步完成后调用 `clearStagingDirectory()` 复位。
-    public func setStagingDirectory(_ stagingDir: URL) {
-        Self.stagingDirectoryOverride = stagingDir
-        try? FileManager.default.createDirectory(
-            at: stagingDir, withIntermediateDirectories: true
-        )
-        rewriteInstallationInfo(syncDir: stagingDir)
+    public func setStagingDirectory(_ stagingDir: URL) throws {
+        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        try Self.installationFileLock.withLock {
+            try rewriteInstallationInfo(syncDir: stagingDir)
+            Self.stagingDirectoryOverride = stagingDir
+        }
     }
 
-    public func clearStagingDirectory() {
-        Self.stagingDirectoryOverride = nil
+    public func clearStagingDirectory() throws {
+        try Self.installationFileLock.withLock {
+            Self.stagingDirectoryOverride = nil
+            try ensureInstallationInfo()
+        }
     }
 
     /// 确保 installation.yaml 的 installation_id / backup_config_files / sync_dir 就绪。
-    func ensureInstallationInfo() {
-        guard let dir = Paths.userDataDirectory else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let root = Self.stagingDirectoryOverride ?? Paths.syncDirectory ?? dir
-        try? FileManager.default.createDirectory(
-            at: root, withIntermediateDirectories: true
-        )
-
-        rewriteInstallationInfo(syncDir: root)
+    func ensureInstallationInfo() throws {
+        try Self.installationFileLock.withLock {
+            guard let dir = Paths.userDataDirectory else { throw RimeError.missingDirectory }
+            let root = Self.stagingDirectoryOverride ?? Paths.syncDirectory ?? dir
+            try rewriteInstallationInfo(syncDir: root)
+        }
     }
 
     /// 写入 installation.yaml：`installation_id` + `backup_config_files` + `sync_dir`。
     /// 读改写全程持锁：`ensureInstallationInfo`（启动任务）与 `setStagingDirectory`
     /// （同步队列）可能交错，无锁会丢更新（如暂存覆盖被启动默认值冲掉）。
-    private static let installationFileLock = Mutex<Void>(())
+    private static let installationFileLock = NSRecursiveLock()
 
-    private func rewriteInstallationInfo(syncDir: URL) {
-        guard let dir = Paths.userDataDirectory else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(
-            at: syncDir, withIntermediateDirectories: true
-        )
+    private func rewriteInstallationInfo(syncDir: URL) throws {
+        guard let dir = Paths.userDataDirectory else { throw RimeError.missingDirectory }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: syncDir, withIntermediateDirectories: true)
 
-        Self.installationFileLock.withLock { _ in
+        try Self.installationFileLock.withLock {
             let file = dir.appendingPathComponent("installation.yaml")
             // 按行拆分时剥掉 CRLF 的 \r 残留，避免写回的 YAML 行尾混入 \r。
             var lines = ((try? String(contentsOf: file, encoding: .utf8))?
                 .components(separatedBy: "\n") ?? [])
                 .map { $0.hasSuffix("\r") ? String($0.dropLast()) : $0 }
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("installation_id:") }
-            lines.insert("installation_id: \(yamlString(Self.installationID))", at: 0)
+            lines.insert("installation_id: \(try yamlString(Self.installationID))", at: 0)
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("backup_config_files:") }
             lines.append("backup_config_files: true")
             lines = lines.filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("sync_dir:") }
-            lines.append("sync_dir: \(yamlString(syncDir.path))")
-            do {
-                try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
-            } catch {
-                // 写失败若被吞掉，librime 会按旧 sync_dir 导出/合并，同步静默错位——必须留痕。
-                log("installation.yaml write failed: \(error.localizedDescription)")
-            }
+            lines.append("sync_dir: \(try yamlString(syncDir.path))")
+            try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
         }
         log("sync_dir = \(syncDir.path)")
     }
 
     // JSON 字符串也是合法 YAML 标量，避免安装 ID 和目录中的引号破坏配置。
-    private func yamlString(_ value: String) -> String {
-        let data = try! JSONEncoder().encode(value)
+    private func yamlString(_ value: String) throws -> String {
+        let data = try JSONEncoder().encode(value)
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -99,6 +91,7 @@ extension RimeContext {
     public func syncUserData() throws -> URL {
         lock.lock()
         defer { lock.unlock() }
+        guard isReady else { throw RimeError.syncFailed }
         guard let staging = Self.stagingDirectoryOverride else {
             throw RimeError.missingDirectory
         }

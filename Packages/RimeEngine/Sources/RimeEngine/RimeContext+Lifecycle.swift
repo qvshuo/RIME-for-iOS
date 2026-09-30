@@ -19,7 +19,7 @@ extension RimeContext {
         do {
             try await Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
-                self.prepareUserDirectory()
+                try self.prepareUserDirectory()
                 try self.setupOnce()
                 self.setReady(true)
             }.value
@@ -59,14 +59,13 @@ extension RimeContext {
     }
 
     /// 准备用户数据目录并清理崩溃残留：建目录、清 leveldb LOCK、写 installation.yaml。
-    private func prepareUserDirectory() {
+    private func prepareUserDirectory() throws {
         guard let user = Paths.userDataDirectory else {
-            NSLog("Quill RIME missing user data directory")
-            return
+            throw RimeError.missingDirectory
         }
-        try? FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
         // 内核会在进程退出时释放数据库锁；删除 LOCK 会破坏仍在使用的 inode 的互斥。
-        ensureInstallationInfo()
+        try ensureInstallationInfo()
     }
 
     private func setupOnce() throws {
@@ -158,7 +157,7 @@ extension RimeContext {
     }
 
     /// 销毁并立即重建会话，让同步合并后的用户词库 / custom_phrase 生效。
-    /// 手动同步完成（长按空格键）后调用；组合未清空时跳过销毁（避免丢 preedit）。
+    /// 维护完成后在引擎队列调用；持锁确认无组合和未消费提交。
     public func recreateSession() {
         lock.lock()
         defer { lock.unlock() }

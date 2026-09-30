@@ -35,14 +35,13 @@ public enum WebDAVSync {
     private static func runLibrimeSync(context: RimeContext, staging: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             librimeSyncQueue.async {
-                // 无论成功与否都复位目录覆盖，避免同步失败后残留暂存指向。
-                context.setStagingDirectory(staging)
-                defer { context.clearStagingDirectory() }
-                do {
-                    continuation.resume(returning: try context.syncUserData())
-                } catch {
-                    continuation.resume(throwing: error)
+                let result = Result {
+                    try context.setStagingDirectory(staging)
+                    let syncResult = Result { try context.syncUserData() }
+                    try context.clearStagingDirectory()
+                    return try syncResult.get()
                 }
+                continuation.resume(with: result)
             }
         }
     }

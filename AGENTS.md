@@ -115,6 +115,9 @@ Never pass `hasInputText` or `preedit` as `KeyboardView` init params — replaci
 - Session is **lazily created on the keypress thread** (`createSessionIfNeeded()`) — never create/use a session across threads. `start()` pre-creates one so the first keypress is cheap.
 - After creating a session the bridge selects **`luna_pinyin`** (fallback: first available schema) and sets `ascii_mode=false`. `RimeContext` no longer persists a preferred schema; there is **no schema switcher UI**.
 - All RIME access is serialized with `NSRecursiveLock`.
+- Controller cleanup uses a session owner token, so a retiring controller cannot destroy a replacement controller’s session.
+- The main settings app redirects logs but does not initialize librime or create a session; only the keyboard opens the user dictionary.
+- Installation YAML updates and staging overrides share one recursive transaction lock. Failed writes throw and abort synchronization; cleanup restores the normal sync directory.
 
 ### Data model — no deploy path
 

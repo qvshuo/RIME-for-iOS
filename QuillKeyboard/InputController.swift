@@ -10,6 +10,7 @@ final class InputController: UIInputViewController {
 
     private let rimeContext = RimeContext.shared
     private let inputState = InputState()
+    private let sessionID = UUID()
     private var displayedPreedit: String = ""
     private var hostingController: UIHostingController<KeyboardView>?
     private var doubleSpaceTracker = DoubleSpaceTracker(interval: 0.35)
@@ -27,11 +28,13 @@ final class InputController: UIInputViewController {
     deinit {
         toastDismissTask?.cancel()
         let rime = rimeContext
-        WebDAVSync.runAfterSync { rime.destroySession() }
+        let owner = sessionID
+        WebDAVSync.runAfterSync { rime.releaseSession(owner) }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        rimeContext.claimSession(sessionID)
 
         // 只 start() 不部署：全量部署超扩展 ~77MB 内存上限会被 Jetsam 杀死，
         // 数据来自 Bundle 内预构建的 SharedSupport/build。

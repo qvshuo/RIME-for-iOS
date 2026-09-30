@@ -230,8 +230,11 @@ struct SettingsView: View {
                 )
             }
             .task {
-                await rimeContext.start()
-                loadKeyDefaults()
+                // 设置页只需要日志与凭据，不创建会话占用共享用户词库。
+                if !didLoadCredentials {
+                    rimeContext.redirectStderrToLogFile()
+                    loadKeyDefaults()
+                }
             }
         }
     }
