@@ -7,6 +7,8 @@ public struct KeyboardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var viewModel: KeyboardViewModel
     @State private var candidatesExpanded = false
+    @State private var settings = SyncSettingsModel()
+    @State private var editorModel = KeyboardViewModel()
     let rimeContext: RimeContext
     let inputState: InputState
     let keyboardType: UIKeyboardType
@@ -53,15 +55,27 @@ public struct KeyboardView: View {
                         )
                         .transition(.opacity)
                     } else {
-                        CandidatesBar(
-                            rimeContext: rimeContext,
-                            theme: theme,
-                            isExpanded: $candidatesExpanded,
-                            onSelect: selectAndCollapse
-                        )
-
-                        keyArea(theme: theme, in: geometry.size.width)
-                            .transition(.opacity)
+                        if settings.editingField != nil {
+                            CredentialEditorBar(model: settings, theme: theme)
+                            keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
+                        } else {
+                            CandidatesBar(
+                                rimeContext: rimeContext,
+                                inputState: inputState,
+                                theme: theme,
+                                isExpanded: $candidatesExpanded,
+                                onSelect: selectAndCollapse
+                            )
+                            switch inputState.panelMode {
+                            case .input:
+                                keyArea(theme: theme, in: geometry.size.width, model: viewModel)
+                            case .sync:
+                                SyncPanelView(model: settings, inputState: inputState, theme: theme,
+                                              onSync: { onKey(.startSync) })
+                            case .log:
+                                LogPanelView(theme: theme)
+                            }
+                        }
 
                         Spacer(minLength: 0)
                     }
@@ -74,8 +88,7 @@ public struct KeyboardView: View {
         // 用主题总高度作 SwiftUI 内在尺寸，系统键盘容器按此高度平滑滑入。
         .frame(height: theme.totalHeight)
         .frame(maxWidth: .infinity)
-        // 同步提示：候选栏顶部居中悬浮胶囊（长按预告 / 同步结果），不挡按键点击。
-        // toast 与长按进度只在 `SyncToastOverlay` 自身 body 读取，变化不重求值整棵键盘树。
+        // Toast 的观察限定在悬浮层，避免输入树因提示变化整体刷新。
         .overlay(alignment: .top) {
             SyncToastOverlay(inputState: inputState, theme: theme)
         }
@@ -83,14 +96,29 @@ public struct KeyboardView: View {
             KeyboardFeedback.prepare()
             viewModel.handleKeyboardTypeChange(keyboardType)
             viewModel.handleReturnKeyType(returnKeyType)
-            rimeContext.setAsciiMode(viewModel.inputLanguage == .english)
+            if !inputState.isSyncing { rimeContext.setAsciiMode(viewModel.inputLanguage == .english) }
         }
         .onChange(of: keyboardType) { _, newType in
             viewModel.handleKeyboardTypeChange(newType)
-            rimeContext.setAsciiMode(viewModel.inputLanguage == .english)
+            if !inputState.isSyncing { rimeContext.setAsciiMode(viewModel.inputLanguage == .english) }
         }
         .onChange(of: returnKeyType) { _, newType in
             viewModel.handleReturnKeyType(newType)
+        }
+        .onChange(of: inputState.isSyncing) { _, syncing in
+            if !syncing { rimeContext.setAsciiMode(viewModel.inputLanguage == .english) }
+        }
+        .onChange(of: settings.editingField) { old, new in
+            if old == nil, new != nil {
+                editorModel.handleKeyboardTypeChange(.asciiCapable)
+                editorModel.currentLayout = .qwerty
+                editorModel.shiftState = .lowercase
+            }
+        }
+        .onChange(of: inputState.panelMode) { _, mode in
+            settings.editingField = nil
+            let name = switch mode { case .input: "输入"; case .sync: "同步"; case .log: "日志" }
+            KeyboardDiagnostics.shared.record("面板 → \(name)")
         }
         // 展开时一次性补齐全部候选；候选清空的自动收起由子视图自行观察。
         .onChange(of: candidatesExpanded) { _, expanded in
@@ -101,16 +129,16 @@ public struct KeyboardView: View {
     }
 
     private func selectAndCollapse(_ index: Int) {
-        // 与 handleKey 同一门禁：同步 toast 期间不响应候选选择 / 展开收起。
-        guard inputState.toast == nil else { return }
+        // 维护进行中不向引擎发送输入，结果提示期间恢复正常输入。
+        guard !inputState.isSyncing else { return }
         candidatesExpanded = false
         onKey(.selectCandidate(index))
     }
 
     /// 键区只依赖低频状态（布局/语言/大小写）；preedit 等高频变化收窄到行视图。
-    private func keyArea(theme: Theme, in totalWidth: CGFloat) -> some View {
+    private func keyArea(theme: Theme, in totalWidth: CGFloat, model: KeyboardViewModel, editing: Bool = false) -> some View {
         VStack(spacing: theme.rowSpacing) {
-            if viewModel.currentRows.isEmpty {
+            if model.currentRows.isEmpty {
                 // 布局加载失败兜底：显示错误而非空白键盘。
                 // 高度 = 键区高度（总高 − 候选栏 − 上下内边距），与正常键区一致。
                 let keysAreaHeight = theme.totalHeight
@@ -121,7 +149,7 @@ public struct KeyboardView: View {
                     Text("键盘布局加载失败")
                         .font(theme.candidateFont)
                         .foregroundStyle(.secondary)
-                    if let error = viewModel.errorMessage {
+                    if let error = model.errorMessage {
                         Text(error)
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(.tertiary)
@@ -132,15 +160,16 @@ public struct KeyboardView: View {
                 .frame(height: keysAreaHeight)
             } else {
                 // 行顺序固定，用下标做稳定身份，避免重建导致 @State 丢失与视图抖动。
-                ForEach(Array(viewModel.currentRows.enumerated()), id: \.offset) { _, row in
+                ForEach(Array(model.currentRows.enumerated()), id: \.offset) { _, row in
                     KeyboardRowView(
                         row: row,
                         theme: theme,
                         totalWidth: totalWidth,
-                        shiftState: viewModel.shiftState,
-                        returnKeyLabel: viewModel.returnKeyLabel,
+                        shiftState: model.shiftState,
+                        returnKeyLabel: editing ? (settings.editingField == .installationID ? "完成" : "下一项") : model.returnKeyLabel,
                         rimeContext: rimeContext,
                         inputState: inputState,
+                        editingCredentials: editing,
                         onKey: handleKey
                     )
                 }
@@ -157,14 +186,17 @@ public struct KeyboardView: View {
     }
 
     private func handleKey(_ action: KeyAction) {
-        // 同步 toast 展示期间屏蔽所有按键（字母/功能/切换键），待同步结果收起后再恢复。
-        // `.startSync` 在 toast 置位前通过本入口，故长按空格仍能启动同步。
-        guard inputState.toast == nil else { return }
+        guard !inputState.isSyncing else { return }
+        if settings.editingField != nil {
+            if action == .toggleLanguage { settings.append("@"); return }
+            if let transformed = editorModel.consume(action) { settings.consume(transformed) }
+            return
+        }
         if let transformed = viewModel.consume(action, rimeContext: rimeContext) {
             onKey(transformed)
             // 中/英切换：视图按当前语言把 ascii_mode 写回 RIME。
             if case .toggleLanguage = transformed {
-                rimeContext.setAsciiMode(viewModel.inputLanguage == .english)
+                if !inputState.isSyncing { rimeContext.setAsciiMode(viewModel.inputLanguage == .english) }
             }
         }
     }
@@ -173,21 +205,37 @@ public struct KeyboardView: View {
 /// 折叠候选栏：在自身 body 观察候选，刷新只重求值本视图。
 private struct CandidatesBar: View {
     let rimeContext: RimeContext
+    let inputState: InputState
     let theme: Theme
     @Binding var isExpanded: Bool
     let onSelect: (Int) -> Void
 
     var body: some View {
-        CandidatePanel(
-            candidates: rimeContext.candidates,
-            highlightedIndex: rimeContext.highlightedCandidateIndex,
-            theme: theme,
-            isExpanded: $isExpanded,
-            onSelect: onSelect
-        )
-        // 候选为空时自动收起，避免空网格挡住键盘。
+        HStack(spacing: 0) {
+            if rimeContext.preedit.isEmpty || inputState.panelMode != .input {
+                Menu {
+                    if inputState.panelMode != .input {
+                        Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
+                        Divider()
+                    }
+                    Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
+                    Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(theme.keyForeground)
+                        .frame(width: theme.chevronWidth, height: theme.candidateBarHeight + theme.keyboardPadding.top)
+                }
+                .accessibilityLabel("功能菜单")
+            }
+            CandidatePanel(candidates: rimeContext.candidates,
+                           highlightedIndex: rimeContext.highlightedCandidateIndex,
+                           theme: theme, isExpanded: $isExpanded, onSelect: onSelect)
+                .disabled(inputState.isSyncing)
+        }
         .onChange(of: rimeContext.candidates.isEmpty) { _, empty in
             if empty { isExpanded = false }
+            else { inputState.panelMode = .input }
         }
     }
 }
@@ -202,13 +250,14 @@ private struct KeyboardRowView: View {
     let returnKeyLabel: String
     let rimeContext: RimeContext
     let inputState: InputState
+    let editingCredentials: Bool
     let onKey: (KeyAction) -> Void
 
     var body: some View {
         // 三元条件短路保证不含回车键的行不读取 preedit / hasInputText（不被追踪）。
         let hasReturn = row.keys.contains { $0.action.isReturn }
-        let hasPreedit = hasReturn ? !rimeContext.preedit.isEmpty : false
-        let highlightReturn = hasReturn ? (!hasPreedit && inputState.hasInputText) : false
+        let hasPreedit = hasReturn && !editingCredentials ? !rimeContext.preedit.isEmpty : false
+        let highlightReturn = hasReturn ? (!hasPreedit && (editingCredentials || inputState.hasInputText)) : false
         let effectiveReturnLabel = hasReturn
             ? KeyboardViewModel.effectiveReturnLabel(hasPreedit: hasPreedit, hostLabel: returnKeyLabel)
             : nil
@@ -243,7 +292,6 @@ private struct KeyboardRowView: View {
                         ),
                         theme: theme,
                         shiftState: shiftState,
-                        inputState: inputState,
                         action: onKey
                     )
                     .frame(
@@ -263,82 +311,29 @@ private struct KeyboardRowView: View {
         effectiveReturnLabel: String?,
         highlightReturn: Bool
     ) -> KeyDescriptor {
+        if editingCredentials, key.action == .toggleLanguage { return key.with(label: "@") }
         guard hasReturn, key.action.isReturn else { return key }
         return key.with(label: effectiveReturnLabel ?? key.label, style: highlightReturn ? .confirm : key.style)
     }
 }
 
-/// 同步悬浮层：在自身 body 作用域观察 `inputState`，toast / 长按预告的出现、
-/// 替换、消失只重求值本视图，不重求值整棵键盘树。两者同位互斥：
-/// 预告胶囊（长按中）→ toast（触发后）。
 private struct SyncToastOverlay: View {
     let inputState: InputState
     let theme: Theme
 
-    private enum Phase {
-        case hidden, holdHint, toast
-    }
-
-    private var phase: Phase {
-        if inputState.toast != nil { return .toast }
-        if inputState.syncHoldProgress != nil { return .holdHint }
-        return .hidden
-    }
-
     var body: some View {
         Group {
-            switch phase {
-            case .toast:
-                if let toast = inputState.toast {
-                    SyncToastView(toast: toast, theme: theme)
-                        .padding(.top, 4)
-                }
-            case .holdHint:
-                if let progress = inputState.syncHoldProgress {
-                    SyncHoldHintView(progress: progress, theme: theme)
-                        .padding(.top, 4)
-                }
-            case .hidden:
-                EmptyView()
+            if let toast = inputState.toast {
+                SyncToastView(toast: toast, theme: theme).padding(.top, 4)
             }
         }
         .transition(.opacity)
-        .animation(.easeInOut(duration: 0.15), value: phase)
-    }
-}
-
-/// 空格长按同步预告：迷你进度环 + 「继续按住同步」，样式与同步 toast 同一
-/// 视觉语言（同位置、胶囊、keyBackground 填充、共用阴影规格）。进度环随
-/// 按住线性填充，松手消失，满 3 秒交棒给「正在同步…」toast。
-private struct SyncHoldHintView: View {
-    let progress: Double
-    let theme: Theme
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(.secondary, style: StrokeStyle(lineWidth: theme.syncRingLineWidth, lineCap: .round))
-                .frame(width: theme.syncRingSize, height: theme.syncRingSize)
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.05), value: progress)
-            Text("继续按住同步")
-                .font(.system(size: theme.toastFontSize, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, theme.toastHPadding)
-        .padding(.vertical, theme.toastVPadding)
-        .background {
-            Capsule()
-                .fill(theme.keyBackground)
-                .floatingShadow()
-        }
-        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.15), value: inputState.toast != nil)
     }
 }
 
 /// 同步 toast：候选栏顶部居中的悬浮胶囊。`started` 持续到同步结束被替换，
-/// 收起时长由控制器计时；纯文本无交互，不挡点击。
+/// 收起时长由进程级同步状态管理；纯文本无交互，不挡点击。
 private struct SyncToastView: View {
     let toast: SyncToast
     let theme: Theme

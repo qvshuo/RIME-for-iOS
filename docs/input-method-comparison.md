@@ -110,7 +110,7 @@ Quill 的展开网格是对 Hamster/fcitx5 的仿：「chevron 从候选栏挑�
 
 | 项目 | 方式 | 手动/自动 |
 |---|---|---|
-| Quill | WebDAV（长按空格 3s，仅键盘侧触发）本地暂存 staging temp（`tmp/RimeSyncStage`），上传各设备目录 | **手动**（长按空格 3s） |
+| Quill | WebDAV（键盘同步页触发），使用独立临时目录，上传各设备目录 | **手动**（同步页按钮） |
 | Squirrel | `rime_sync_user_data` / 可同步 `~/Library/Rime/sync` / WebDAV 用户方案 | 自动或手动（`Sync` 菜单） |
 | Hamster | iCloud（CloudKit）+ `syncDirDictionary` | 自动 |
 | fcitx5-ios | AppGroup + 局域网 HTTP（`32489` / Swifter）+ magic text | （用户可按 mail 手动） |
@@ -125,7 +125,7 @@ Quill 是唯一「无云、需用户主动网络」的。
 - **Hamster**：完整 Key 手势（double tap / long press / repeat / drag / swipe 帧阈值）。
 - **fcitx5-ios**：`KeyGesture` tap / double / long / swipe-up（候选）/ swipe-down / slide（退格 repeat）等整套。
 
-Quill 目前只实现 bubble + tap 按压，没有 drag/swipe/长按连续退格等。
+Quill 实现 bubble + tap 按压和长按连续退格，没有 drag/swipe。
 
 ---
 

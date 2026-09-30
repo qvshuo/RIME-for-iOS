@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		050493EAC3D16E3BB71872F1 /* WebDAVSyncOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FE8B930F711DFA200C0D400 /* WebDAVSyncOperationTests.swift */; };
 		0593855B2DE6724D34070E9A /* Sync in Frameworks */ = {isa = PBXBuildFile; productRef = 44265536B2A75A8C692B56E7 /* Sync */; };
 		05DDFDA13511180ED8017FB5 /* ShiftTapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */; };
 		0853183E724CA3FFD629E9AB /* LayoutActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */; };
@@ -15,22 +16,23 @@
 		4FB2916766D1AD3C672DCAAC /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = F9189F850E6223AA5030D809 /* Models */; };
 		7751BF9CF58BF78FE0747D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D38D15D82BEF4CEED3444A3 /* Assets.xcassets */; };
 		7D7AF0A974E9EE2E33427F59 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CF0539FE032AB8A2E6216DC /* SettingsView.swift */; };
+		86DF3A93E1145ADF4E1EC28B /* KeyboardPanelRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEAD82A913F5E1486C8225D5 /* KeyboardPanelRenderingTests.swift */; };
 		87F84CF28FA364F4483B828A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F5F306CD883ECA58DD8F13DA /* LaunchScreen.storyboard */; };
 		8F72F69F0370F30221A4788A /* KeyboardUI in Frameworks */ = {isa = PBXBuildFile; productRef = 2541843732188F8E55BE7392 /* KeyboardUI */; };
 		935C76712321EC8818FD4177 /* InputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C030032E8865EEAA81E2EC9 /* InputController.swift */; };
 		969AB467B0A4051BE6E9032C /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = C839A22700EA32BE084428C0 /* Models */; };
 		9705200D2B527B8A601BF382 /* SyncToastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30D468055C2C2BD10C72597C /* SyncToastTests.swift */; };
-		9AA64A0251A4F3BFABFB5016 /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = 01472C7BEA1739BDFF2D5CE2 /* Models */; };
+		9A257445B794445F62DB6AA5 /* SyncSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60F500257B7509B948CF37C4 /* SyncSettingsTests.swift */; };
 		A6AED39B558435213856CA79 /* ThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6E8DA818C2039DF8F8DC30 /* ThemeTests.swift */; };
 		B0C9604B3BD073D71330A69D /* QuillKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1943A85F6240585773C78DF0 /* QuillKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		B0EA2C8C38D7EC013DF55067 /* RimeEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 60F2FC1695A415863F437D01 /* RimeEngine */; };
 		B7529F2A32CCEB1A03B337A7 /* Sync in Frameworks */ = {isa = PBXBuildFile; productRef = 8C8EF1AB9532971F77D5D1C5 /* Sync */; };
-		C41957B31D9DC1943DC005AC /* Sync in Frameworks */ = {isa = PBXBuildFile; productRef = 10C5BDD3B7F785C041FF7F4A /* Sync */; };
 		D693110B075CE79760C2F662 /* CandidateGridLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7F92E59E92D38BC5A0D43D /* CandidateGridLayoutTests.swift */; };
 		D718949F3CECEC51C773343A /* QuillApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D684D75A63D67736FD91E365 /* QuillApp.swift */; };
 		D9FDCB84D586D6C699CE16C5 /* KeyboardUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3D06582F475F825F8DF123D6 /* KeyboardUI */; };
+		E56BEF16A4814D472283917F /* SyncCancellationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FD385DB16BD80AC38D1188B /* SyncCancellationTests.swift */; };
 		EDA0FD66E2E623992CAE6DE0 /* RowLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB935A3A503C65B092561B45 /* RowLayoutTests.swift */; };
 		F0973E945DE560284A9CF30A /* RimeEngine in Frameworks */ = {isa = PBXBuildFile; productRef = CB703CB693786EECD43A10D2 /* RimeEngine */; };
+		F964142F6BE7E4632B8B9F69 /* KeyboardDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B4CBDD09AD5C014B9A4984 /* KeyboardDiagnosticsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -65,16 +67,21 @@
 		2CA6916E75E8F0E708D037A0 /* KeyboardUI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = KeyboardUI; path = Packages/KeyboardUI; sourceTree = SOURCE_ROOT; };
 		2CF0539FE032AB8A2E6216DC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2F4375A49C9A6A45AC99B711 /* Sync */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Sync; path = Packages/Sync; sourceTree = SOURCE_ROOT; };
+		2FE8B930F711DFA200C0D400 /* WebDAVSyncOperationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVSyncOperationTests.swift; sourceTree = "<group>"; };
 		30D468055C2C2BD10C72597C /* SyncToastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncToastTests.swift; sourceTree = "<group>"; };
 		39505C29727ACD13151CC29C /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Models; path = Packages/Models; sourceTree = SOURCE_ROOT; };
 		4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVClientTests.swift; sourceTree = "<group>"; };
+		60F500257B7509B948CF37C4 /* SyncSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSettingsTests.swift; sourceTree = "<group>"; };
 		762A754797A6ACC34A3FF6D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7D38D15D82BEF4CEED3444A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8C030032E8865EEAA81E2EC9 /* InputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputController.swift; sourceTree = "<group>"; };
 		8D0561D3916CADE793F1B8EC /* Quill.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Quill.entitlements; sourceTree = "<group>"; };
 		8F7F92E59E92D38BC5A0D43D /* CandidateGridLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CandidateGridLayoutTests.swift; sourceTree = "<group>"; };
+		9FD385DB16BD80AC38D1188B /* SyncCancellationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncCancellationTests.swift; sourceTree = "<group>"; };
 		B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutActionTests.swift; sourceTree = "<group>"; };
+		B4B4CBDD09AD5C014B9A4984 /* KeyboardDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDiagnosticsTests.swift; sourceTree = "<group>"; };
 		B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiftTapTests.swift; sourceTree = "<group>"; };
+		BEAD82A913F5E1486C8225D5 /* KeyboardPanelRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPanelRenderingTests.swift; sourceTree = "<group>"; };
 		D684D75A63D67736FD91E365 /* QuillApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuillApp.swift; sourceTree = "<group>"; };
 		E138D7C83C6AE2CF6265B789 /* RimeEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RimeEngine; path = Packages/RimeEngine; sourceTree = SOURCE_ROOT; };
 		EB935A3A503C65B092561B45 /* RowLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RowLayoutTests.swift; sourceTree = "<group>"; };
@@ -106,16 +113,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FB3C5DE1C2E5C943BC23D630 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B0EA2C8C38D7EC013DF55067 /* RimeEngine in Frameworks */,
-				9AA64A0251A4F3BFABFB5016 /* Models in Frameworks */,
-				C41957B31D9DC1943DC005AC /* Sync in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -144,12 +141,17 @@
 			isa = PBXGroup;
 			children = (
 				8F7F92E59E92D38BC5A0D43D /* CandidateGridLayoutTests.swift */,
+				B4B4CBDD09AD5C014B9A4984 /* KeyboardDiagnosticsTests.swift */,
+				BEAD82A913F5E1486C8225D5 /* KeyboardPanelRenderingTests.swift */,
 				B242AD899D5F22E14E0FD52F /* LayoutActionTests.swift */,
 				EB935A3A503C65B092561B45 /* RowLayoutTests.swift */,
 				B6F7FB4D3AD835B70E02C3BD /* ShiftTapTests.swift */,
+				9FD385DB16BD80AC38D1188B /* SyncCancellationTests.swift */,
+				60F500257B7509B948CF37C4 /* SyncSettingsTests.swift */,
 				30D468055C2C2BD10C72597C /* SyncToastTests.swift */,
 				2B6E8DA818C2039DF8F8DC30 /* ThemeTests.swift */,
 				4D0ACD50DF9DD83F0C85C1C6 /* WebDAVClientTests.swift */,
+				2FE8B930F711DFA200C0D400 /* WebDAVSyncOperationTests.swift */,
 			);
 			path = QuillKeyboardUITests;
 			sourceTree = "<group>";
@@ -220,7 +222,6 @@
 				41377938FC3551FBB87FB421 /* Copy SharedSupport */,
 				7A1334224C98F7465D65136E /* Sources */,
 				67CD0C1E188A80AB55F1C449 /* Resources */,
-				FB3C5DE1C2E5C943BC23D630 /* Frameworks */,
 				5DD30BF81D90143A1FD8DB14 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -230,9 +231,6 @@
 			);
 			name = Quill;
 			packageProductDependencies = (
-				60F2FC1695A415863F437D01 /* RimeEngine */,
-				01472C7BEA1739BDFF2D5CE2 /* Models */,
-				10C5BDD3B7F785C041FF7F4A /* Sync */,
 			);
 			productName = Quill;
 			productReference = 0DBE22D21ADC2F0225DF0411 /* Quill.app */;
@@ -347,12 +345,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				D693110B075CE79760C2F662 /* CandidateGridLayoutTests.swift in Sources */,
+				F964142F6BE7E4632B8B9F69 /* KeyboardDiagnosticsTests.swift in Sources */,
+				86DF3A93E1145ADF4E1EC28B /* KeyboardPanelRenderingTests.swift in Sources */,
 				0853183E724CA3FFD629E9AB /* LayoutActionTests.swift in Sources */,
 				EDA0FD66E2E623992CAE6DE0 /* RowLayoutTests.swift in Sources */,
 				05DDFDA13511180ED8017FB5 /* ShiftTapTests.swift in Sources */,
+				E56BEF16A4814D472283917F /* SyncCancellationTests.swift in Sources */,
+				9A257445B794445F62DB6AA5 /* SyncSettingsTests.swift in Sources */,
 				9705200D2B527B8A601BF382 /* SyncToastTests.swift in Sources */,
 				A6AED39B558435213856CA79 /* ThemeTests.swift in Sources */,
 				2A5A2CAC377770BEB20A1970 /* WebDAVClientTests.swift in Sources */,
+				050493EAC3D16E3BB71872F1 /* WebDAVSyncOperationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -661,14 +664,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		01472C7BEA1739BDFF2D5CE2 /* Models */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Models;
-		};
-		10C5BDD3B7F785C041FF7F4A /* Sync */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Sync;
-		};
 		2541843732188F8E55BE7392 /* KeyboardUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KeyboardUI;
@@ -680,10 +675,6 @@
 		44265536B2A75A8C692B56E7 /* Sync */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Sync;
-		};
-		60F2FC1695A415863F437D01 /* RimeEngine */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = RimeEngine;
 		};
 		8C8EF1AB9532971F77D5D1C5 /* Sync */ = {
 			isa = XCSwiftPackageProductDependency;

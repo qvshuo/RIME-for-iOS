@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Models
+import Synchronization
 @preconcurrency import RimeEngineC
 
 /// librime 的进程内入口。引擎操作持锁串行执行，UI 状态在主线程发布。
@@ -13,6 +14,7 @@ public final class RimeContext: @unchecked Sendable {
 
     let rimeAPI: RimeApi_stdbool = rime_get_api_stdbool()!.pointee
     let lock = NSRecursiveLock()
+    private let sessionOwner = Mutex<UUID?>(nil)
 
     @ObservationIgnored var isSetup = false
     @ObservationIgnored var isStarting = false
@@ -36,6 +38,19 @@ public final class RimeContext: @unchecked Sendable {
     @ObservationIgnored public internal(set) var commitText: String = ""
 
     let logFileName = "quill.log"
+
+    public func claimSession(_ owner: UUID) {
+        sessionOwner.withLock { $0 = owner }
+    }
+
+    /// 旧控制器的排队清理不能销毁已被新控制器接管的会话。
+    public func releaseSession(_ owner: UUID) {
+        sessionOwner.withLock { current in
+            guard current == owner else { return }
+            current = nil
+            destroySession()
+        }
+    }
 
     private init() {}
 }

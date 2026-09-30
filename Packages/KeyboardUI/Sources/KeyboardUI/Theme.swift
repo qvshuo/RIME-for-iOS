@@ -46,13 +46,6 @@ public struct Theme {
     public let iconFontSize: CGFloat
     /// 候选展开箭头字号。
     public let chevronIconFontSize: CGFloat
-    /// 空格长按同步预告胶囊的迷你进度环：直径与线宽。
-    public let syncRingSize: CGFloat
-    public let syncRingLineWidth: CGFloat
-    /// 空格长按触发手动同步的按住秒数。
-    public static let spaceSyncHoldDuration: TimeInterval = 3.0
-    /// 预告胶囊出现前的按住延迟（快速点空格不闪预告）。
-    public static let spaceSyncPreviewDelay: TimeInterval = 0.5
     public let font: Font
     public let candidateFont: Font
 
@@ -113,8 +106,6 @@ public struct Theme {
         previewFontSize: 30,
         iconFontSize: 21,
         chevronIconFontSize: 13,
-        syncRingSize: 14,
-        syncRingLineWidth: 2,
         font: .system(size: 24, weight: .regular),
         candidateFont: .system(size: 19, weight: .regular)
     )
@@ -158,8 +149,6 @@ public struct Theme {
         self.previewFontSize = geometry.previewFontSize
         self.iconFontSize = geometry.iconFontSize
         self.chevronIconFontSize = geometry.chevronIconFontSize
-        self.syncRingSize = geometry.syncRingSize
-        self.syncRingLineWidth = geometry.syncRingLineWidth
         self.font = geometry.font
         self.candidateFont = geometry.candidateFont
     }
@@ -189,8 +178,6 @@ private struct ThemeGeometry {
     let previewFontSize: CGFloat
     let iconFontSize: CGFloat
     let chevronIconFontSize: CGFloat
-    let syncRingSize: CGFloat
-    let syncRingLineWidth: CGFloat
     let font: Font
     let candidateFont: Font
 }

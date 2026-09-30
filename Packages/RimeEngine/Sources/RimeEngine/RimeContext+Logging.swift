@@ -18,16 +18,13 @@ extension RimeContext {
         Paths.logDirectory?.appendingPathComponent(logFileName)
     }
 
-    /// 把 stderr（NSLog / glog 输出）重定向到日志文件，这样 App 主页的日志
-    /// 才能看到 RIME 引擎的真实日志。fcitx5-ios 同款做法。
-    /// 每次启动检查文件大小，超过阈值时轮转一次（quill.log → quill.log.old），
-    /// 防止 stderr 重定向让日志文件无限增长。
+    /// 启动时重定向 stderr，并保留一次轮转，供键盘日志页导出引擎诊断。
     private static let maxLogFileSize: UInt64 = 1 << 20 // 1 MiB
 
     public func redirectStderrToLogFile() {
         guard let url = Paths.logDirectory?.appendingPathComponent(logFileName) else { return }
         // 先回收 librime glog 每次进程遗留的文件：它们不自动清理，会无限累积。
-        // 只保留 quill.log 与其 .old 轮转件；真正的 RIME/glog 详情仍走 stderr 进 quill.log。
+        // 只删除 glog 级别文件，避免删除其他诊断目录。
         pruneGlogFiles()
         rotateLogFileIfNeeded(url)
         // withCString 保证 C 路径指针在 fopen 调用期间存活（`(NSString).utf8String`
@@ -37,8 +34,7 @@ extension RimeContext {
         fclose(file)
     }
 
-    /// 删除 `Paths.logDirectory` 里非 `quill.log(.old)` 的残留文件（glog 按
-    /// 进程名+级别+pid 生成 `*.INFO/WARNING/ERROR/FATAL`，含轮转后缀，长期累积）。
+    /// glog 的独立级别文件不会自行回收；诊断详情已包含在 stderr 中。
     private func pruneGlogFiles() {
         guard let dir = Paths.logDirectory else { return }
         let fm = FileManager.default
@@ -47,10 +43,23 @@ extension RimeContext {
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         ) else { return }
-        let keep = Set([logFileName, logFileName + ".old"])
-        for url in files where !keep.contains(url.lastPathComponent) {
+        for url in files {
+            let name = url.lastPathComponent
+            guard [".INFO", ".WARNING", ".ERROR", ".FATAL"].contains(where: name.contains) else { continue }
             try? fm.removeItem(at: url)
         }
+    }
+
+    /// 截断当前 inode，保留 stderr 的已打开文件描述符，后续引擎日志继续落到同一文件。
+    public func clearLog() throws {
+        guard let url = exportLogURL() else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: 0)
+        }
+        let old = url.appendingPathExtension("old")
+        if FileManager.default.fileExists(atPath: old.path) { try FileManager.default.removeItem(at: old) }
     }
 
     private func rotateLogFileIfNeeded(_ url: URL) {
