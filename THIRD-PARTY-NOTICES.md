@@ -31,13 +31,13 @@ The librime build merges these plugins (`BUILD_MERGED_PLUGINS=ON`):
 
 ## RIME data in `Resources/SharedSupport/`
 
-Quill reads prebuilt data from `Resources/SharedSupport/build/` and the
+RIME for iOS reads prebuilt data from `Resources/SharedSupport/build/` and the
 bundled source files. Most files are copied verbatim from upstream and must
 track those sources (see AGENTS.md); attribution is therefore per source.
 
 | Content | Source | License |
 |---|---|---|
-| `default.yaml`, `symbols.yaml`, `essay.txt` | [librime](https://github.com/rime/librime) `data/minimal` (as shipped by squirrel 1.1.2; `default.yaml` carries two Quill edits: `schema_list` and `menu.page_size`) | BSD-3-Clause |
+| `default.yaml`, `symbols.yaml`, `essay.txt` | [librime](https://github.com/rime/librime) `data/minimal` (as shipped by squirrel 1.1.2; `default.yaml` carries two RIME for iOS edits: `schema_list` and `menu.page_size`) | BSD-3-Clause |
 | `luna_pinyin.schema.yaml`, `luna_pinyin.dict.yaml`, `luna_pinyin_simp.schema.yaml`, `pinyin.yaml` | [rime-luna-pinyin](https://github.com/rime/rime-luna-pinyin) | LGPL-3.0 |
 | `opencc/` (conversion data) | [OpenCC](https://github.com/BYVoid/OpenCC) ver.1.1.9 | Apache-2.0 |
 | `cn_dicts/`, `en_dicts/`, `lua/`, `lm_sc.gram`, `melt_eng.*`, `luna_pinyin_extended.dict.yaml`, `japanese.*`, `default.custom.yaml`, `luna_pinyin.custom.yaml`, `squirrel.custom.yaml`, `weasel.custom.yaml`, `ibus_rime.custom.yaml` | [qvshuo/luna-pinyin-enhanced](https://github.com/qvshuo/luna-pinyin-enhanced) (formerly qvshuo/squirrel) | GPL-3.0 |
@@ -61,7 +61,7 @@ Notes on the aggregated qvshuo data (per its README):
   apply.
 - `default.custom.yaml`, `luna_pinyin.custom.yaml` and the desktop-only
   `squirrel.custom.yaml` / `weasel.custom.yaml` / `ibus_rime.custom.yaml`
-  patches are copied **verbatim** from luna-pinyin-enhanced (not Quill-authored).
+  patches are copied **verbatim** from luna-pinyin-enhanced (not RIME for iOS-authored).
 
 ## License references
 

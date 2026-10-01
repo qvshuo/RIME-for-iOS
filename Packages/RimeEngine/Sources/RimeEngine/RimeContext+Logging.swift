@@ -1,10 +1,6 @@
 import Foundation
 
 extension RimeContext {
-    // MARK: - Logging
-
-    /// 生命周期 / 错误级日志。打到 stderr（被 `redirectStderrToLogFile()` 统一
-    /// 捕获进 quill.log）。不在按键热路径上调用。
     public func log(_ message: String) {
         let ts = Date().formatted(date: .omitted, time: .shortened)
         let line = "[\(ts)] \(message)"
@@ -24,9 +20,8 @@ extension RimeContext {
         EngineLogCapture.shared.start(at: url)
     }
 
-    /// glog 的独立级别文件不会自行回收；诊断详情已包含在 stderr 中。
     private func pruneGlogFiles() {
-        guard let dir = Paths.logDirectory else { return }
+        guard let dir = RimePaths.logDirectory else { return }
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
             at: dir,
@@ -39,5 +34,4 @@ extension RimeContext {
             try? fm.removeItem(at: url)
         }
     }
-
 }

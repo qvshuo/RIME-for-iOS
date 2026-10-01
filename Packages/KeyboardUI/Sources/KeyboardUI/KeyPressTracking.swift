@@ -2,12 +2,11 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// 长按连续触发：按下立即触发一次，长按 0.5 秒后每 0.1 秒持续触发。
 final class KeyPressRepeater: @unchecked Sendable {
     private var timer: Timer?
     private var workItem: DispatchWorkItem?
     private let fire: () -> Void
-    /// 仅在长按重复触发时调用（首次触发的震动由按键触摸回调负责）。
+    /// 首次按下的震动由触摸回调负责，此回调只用于重复触发。
     private let feedback: (() -> Void)?
 
     init(
@@ -45,11 +44,7 @@ final class KeyPressRepeater: @unchecked Sendable {
     }
 }
 
-/// 长按键触摸跟踪：用 UIKit 触摸回调可靠地报告按下/松开/取消/滑离。
-/// - `onRelease`：正常松手，触发按键动作。
-/// - `onCancel`：触摸被系统取消（来电横幅、Control Center、键盘收起手势）
-///   或手指滑离按键（漂移超过容差）——复位按压视觉但不产生动作。
-/// 跟踪首个触摸的对象身份：多点触控时其余手指不触发重复 press/release。
+/// 只跟踪首个触摸；取消或滑离时停止重复，不产生松手动作。
 struct KeyTouchTracker: UIViewRepresentable {
     let onPress: () -> Void
     let onRelease: () -> Void
@@ -84,7 +79,6 @@ struct KeyTouchTracker: UIViewRepresentable {
         var onRelease: (() -> Void)?
         var onCancel: (() -> Void)?
 
-        /// 当前跟踪的触摸；nil 表示没有按下的手指。
         private var activeTouch: UITouch?
         private var hasDrifted = false
 

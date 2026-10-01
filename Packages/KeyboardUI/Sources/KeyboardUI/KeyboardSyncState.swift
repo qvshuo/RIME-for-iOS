@@ -1,9 +1,9 @@
 import Foundation
 import Observation
-import Models
-import Sync
+import KeyboardModels
+import RimeSync
 
-/// 进程级同步状态跨控制器重建保留，避免键盘重新出现时丢失维护门禁。
+/// 跨控制器保留维护门禁，防止新控制器在同步期间恢复输入。
 @MainActor
 @Observable
 public final class KeyboardSyncState {

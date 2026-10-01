@@ -2,19 +2,15 @@ import Foundation
 import UIKit
 import Synchronization
 
-/// 展开候选网格的纯排版计算：按候选文本测量宽度排满即换行。抽成独立类型便于单元测试。
 enum CandidateGridLayout {
-    /// 候选文本宽度的进程级缓存（fontSize|text → 宽度）。拼音候选高频重复，
-    /// 避免每次展开网格都重新测量同一批文本。上限淘汰：键含完整候选文本，
-    /// 长会话会无界累积，而键盘扩展有 ~77MB Jetsam 预算。
+    /// 候选文本会持续变化，缓存必须有上限以控制长会话内存。
     private static let widthCache = Mutex<[String: CGFloat]>([:])
     private static let widthCacheLimit = 512
 
-    /// 行宽测量必须与 `CandidatePanel` 单元格的 `.padding(.horizontal, 10)` 一致。
+    /// 测量边距必须与 CandidatePanel 单元格的实际边距一致。
     private static let cellHPadding: CGFloat = 10
 
-    /// 候选文本的渲染宽度（用与 `candidateFont` 一致的 `UIFont` 测量）。
-    /// 缓存键含字体名：同字号不同 weight 的字体宽度不同，只按 pointSize 会串值。
+    /// 缓存键包含字体名和字号，避免复用不同字体的测量结果。
     static func textWidth(_ text: String, font: UIFont) -> CGFloat {
         let key = "\(font.fontDescriptor.postscriptName)|\(font.pointSize)|\(text)"
         if let width = widthCache.withLock({ $0[key] }) {
@@ -30,8 +26,7 @@ enum CandidateGridLayout {
         return width
     }
 
-    /// 按文本测量宽度把候选排满每行，返回每行候选个数。长词自动减每行个数。
-    /// `firstRowWidth` 让首行收窄避让折叠箭头；宽度比较带 0.5pt 浮点容差。
+    /// firstRowWidth 为折叠箭头预留首行空间；比较允许 0.5 pt 容差。
     static func rowCounts(
         candidateTexts: [String],
         in width: CGFloat,
@@ -69,7 +64,6 @@ enum CandidateGridLayout {
         }
     }
 
-    /// 展开网格的排版结果：每行候选数、行首下标前缀和、首行上边距与最小格宽。
     struct Metrics {
         let rows: [Int]
         let rowStarts: [Int]
@@ -77,9 +71,6 @@ enum CandidateGridLayout {
         let minCellWidth: CGFloat
     }
 
-    /// 一次性算好展开网格排版。首行中心对齐折叠候选栏（barHeight/2），顶边距按
-    /// 首行实际行高（选中 pill 是 selectionHeight、普通格是 cellHeight）计算；
-    /// minCellWidth 比 innerWidth/6 略小，保证 6 个最小格恰好排满（浮点容差）。
     static func measure(
         candidateTexts: [String],
         highlightedIndex: Int,

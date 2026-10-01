@@ -1,18 +1,15 @@
 import Foundation
-import Models
+import KeyboardModels
 @preconcurrency import RimeEngineC
 
 extension RimeContext {
-    // MARK: - Input
-
     public var isLiteralComposition: Bool {
         lock.lock()
         defer { lock.unlock() }
         return literalComposition != nil
     }
 
-    /// 全角符号不能交给 ASCII keycode 路径，否则可能触发标点上屏或候选选择。
-    /// 字面组合仍共用候选、退格和一次性提交通道。
+    /// 全角符号不能走 ASCII keycode，否则会提前提交或触发数字选词。
     @discardableResult
     public func appendLiteralInput(_ text: String) -> Bool {
         lock.lock()
@@ -78,8 +75,7 @@ extension RimeContext {
         return committed
     }
 
-    /// 展开候选网格时把候选补满到 `candidateBatchSize`（热路径只取当前页）。
-    /// 只在用户展开网格时调用一次，避免每次敲键都在主线程拉满 77 个候选。
+    /// 只在展开时补充候选；按键热路径仅读取当前页。
     public func loadExpandedCandidates() {
         lock.lock()
         defer { lock.unlock() }
@@ -95,9 +91,7 @@ extension RimeContext {
             if index == 0 { _ = commitLiteralComposition() }
             return
         }
-        // 全局索引选择：本键盘无翻页，librime 当前页恒为 0，数组下标即全局下标。
-        // 若将来引入翻页须改用 select_candidate_on_current_page。
-        // 选择失败（下标越界等）会表现为「点了候选没反应」，留日志便于排查。
+        // 数组下标是全局候选索引，不能使用仅针对当前页的选择 API。
         if !rimeAPI.select_candidate!(session, max(0, index)) {
             log("selectCandidate(\(index)) failed")
         }
@@ -114,8 +108,6 @@ extension RimeContext {
         commitText = ""
         refreshContext()
     }
-
-    // MARK: - Schema list
 
     func readSchemaList() -> [String] {
         lock.lock()
@@ -134,9 +126,6 @@ extension RimeContext {
         return result
     }
 
-    // MARK: - Rime options
-
-    /// 设置 RIME `ascii_mode` 初始值；若会话已存在立即写入，否则 pending 到会话创建时。
     public func setAsciiMode(_ value: Bool) {
         lock.lock()
         defer { lock.unlock() }
@@ -146,9 +135,7 @@ extension RimeContext {
         refreshContext()
     }
 
-    // MARK: - Context
-
-    /// 取出并清空最近一次按键产生的上屏文本。
+    /// 取出并清空一次性提交，重复读取不会再次返回同一段文本。
     public func pollCommit() -> String? {
         lock.lock()
         defer { lock.unlock() }
@@ -157,8 +144,7 @@ extension RimeContext {
         return text.isEmpty ? nil : text
     }
 
-    /// 同步 RIME 状态到可观测属性。commit 单次语义，先于 context 消费；
-    /// `loadAll` 仅展开网格时补满 77 候选，热路径只取当前页。
+    /// get_commit 是一次性读取，必须先于 context 刷新消费。
     func refreshContext(loadAll: Bool = false) {
         if let text = literalComposition {
             setContext(candidates: text.isEmpty ? [] : [Candidate(text: text)], preedit: text, highlighted: 0)
@@ -224,10 +210,6 @@ extension RimeContext {
         }
     }
 
-    // MARK: - Candidate list iteration (RimeCandidateListFromIndex + Next)
-
-    /// 从全局索引 `index` 起取 `count` 个候选。解耦 RIME 分页与 UI 分页
-    /// （Hamster 同款做法），供 77 候选批量加载使用。
     private func candidateList(from index: Int, count: Int) -> [Candidate] {
         guard count > 0, session != 0 else { return [] }
         var iterator = RimeCandidateListIterator(ptr: nil, index: 0,

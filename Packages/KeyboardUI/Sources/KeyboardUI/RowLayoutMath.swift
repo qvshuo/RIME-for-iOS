@@ -1,9 +1,8 @@
 import Foundation
-import Models
+import KeyboardModels
 import Synchronization
 import UIKit
 
-/// 回车键文案宽度测量的进程级缓存：拼音组合期间每次敲键的行排版不再重复测量。
 enum ReturnLabelWidth {
     private static let cache = Mutex<[String: CGFloat]>([:])
 
@@ -19,8 +18,7 @@ enum ReturnLabelWidth {
     }
 }
 
-/// 单行排版结果：`widths`/`gaps` 与键位一一对应（最终点宽 / 相邻键实际空隙），
-/// `sideInset` 为左右留白。行视图用 `HStack(spacing: 0)` + 按 `gaps` 插 Spacer 渲染。
+/// widths 对应键位，gaps 对应相邻键间距；sideInset 为两侧留白。
 struct RowLayout {
     let keys: [KeyDescriptor]
     let widths: [CGFloat]
@@ -35,7 +33,6 @@ struct RowLayout {
     }
 }
 
-/// 行排版输入参数：随主题变化的几何常量，与具体行无关。
 struct RowLayoutParameters {
     let keys: [KeyDescriptor]
     let totalWidth: CGFloat
@@ -48,14 +45,6 @@ struct RowLayoutParameters {
     let returnLabelWidth: CGFloat
 }
 
-/// 键盘行宽分配的纯逻辑（无视图依赖，可单测）。按行内动作组合分派：
-/// - 含空格键 → 底行：左/右/中英键固定宽（`fixed`），空格吸走余量，回车键按文案增长
-///   （文案过长时从空格让出，空格保底 `minSpaceWidth`）。
-/// - 含 ⇧ 键 → 字母页第三行：⇧/⌫ 方形、中间字母为字母格 L，与首尾字母之间的空隙
-///   g = 1.5L − 36，使 z 对齐 s、m 对齐 k，且左右贴边。
-/// - 含数字/符号切换 + 退格 → 数字/符号页第三行：切换/退格方形，中间键弹性分摊。
-/// - 纯字符行：10 键满宽、9 键居中（首尾留白 (L+keySpacing)/2）。
-/// - 其余 → 按 `width` 权重分摊（兜底，含 `leadingPadding`）。
 enum RowLayoutMath {
     static func layout(_ parameters: RowLayoutParameters) -> RowLayout {
         let keys = parameters.keys
@@ -102,8 +91,6 @@ enum RowLayoutMath {
         return weightedRow(keys: keys, gridWidth: gridWidth, sideInset: sideInset, keySpacing: keySpacing)
     }
 
-    /// 底行：[123/ABC 宽键][空格 弹性][中/英 方形][⏎ ≥1.5×方形]。非空格/回车键必须都是固定宽，
-    /// 否则退回权重分摊。回车默认宽 1.5×方形，文案更宽时从空格借宽（空格保底 minSpaceWidth）。
     private static func bottomRow(
         keys: [KeyDescriptor],
         gridWidth: CGFloat,
@@ -150,9 +137,7 @@ enum RowLayoutMath {
         )
     }
 
-    /// 字母页第三行：[⇧ 方形][空隙 g][字母 ×L][空隙 g][⌫ 方形]，左右贴边。
-    /// 行宽守恒给出 g = 1.5L − 36，恰好使 z 对齐 s、m 对齐 k（行内留白被对称空隙吃掉，
-    /// 行宽恰好填满 gridWidth）。
+    /// 对称间隙由行宽守恒推导，使 z/s 与 m/k 左边缘对齐。
     private static func shiftRow(
         keys: [KeyDescriptor],
         gridWidth: CGFloat,
@@ -183,8 +168,6 @@ enum RowLayoutMath {
         return RowLayout(keys: keys, widths: widths, gaps: gaps, sideInset: 0)
     }
 
-    /// 数字/符号页第三行：[#+=/123 方形][中间键 ×弹性][⌫ 方形]。切换/退格必须固定宽，
-    /// 否则退回权重分摊。
     private static func toggleRow(
         keys: [KeyDescriptor],
         gridWidth: CGFloat,
@@ -217,7 +200,6 @@ enum RowLayoutMath {
         )
     }
 
-    /// 纯字符行：10 键满宽；9 键居中（首尾各留白 (L+keySpacing)/2），键宽恒为字母格 L。
     private static func letterRow(
         keys: [KeyDescriptor],
         letter: CGFloat,
@@ -240,7 +222,6 @@ enum RowLayoutMath {
         )
     }
 
-    /// 兜底：按 `width` 权重把可用宽度分摊到各键。
     private static func weightedRow(
         keys: [KeyDescriptor],
         gridWidth: CGFloat,

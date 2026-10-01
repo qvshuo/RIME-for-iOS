@@ -15,16 +15,16 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../RimeEngine"),
-        .package(path: "../Models"),
-        .package(path: "../Sync"),
+        .package(path: "../KeyboardModels"),
+        .package(path: "../RimeSync"),
     ],
     targets: [
         .target(
             name: "KeyboardUI",
             dependencies: [
                 .product(name: "RimeEngine", package: "RimeEngine"),
-                .product(name: "Models", package: "Models"),
-                .product(name: "Sync", package: "Sync"),
+                .product(name: "KeyboardModels", package: "KeyboardModels"),
+                .product(name: "RimeSync", package: "RimeSync"),
             ],
             path: "Sources/KeyboardUI",
             resources: [

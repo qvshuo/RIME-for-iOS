@@ -1,295 +1,121 @@
-# AGENTS.md — Quill (iOS RIME input method)
+# AGENTS.md — RIME for iOS
 
-This file is the **single authoritative technical document** for the repo. The
-README is intentionally minimal; every architectural fact, convention, and
-pitfall below is meant to be read by both humans and AI agents before touching
-the code. Read the whole thing before making changes.
+Read this file before modifying the project. It is the authoritative architecture and contributor guide; the README stays concise.
 
-## What this repo is
+## Identity and layout
 
-**Quill (Quill 输入法)** — a minimal iOS RIME input method.
-
-- Xcode project `Quill.xcodeproj` is **generated from `project.yml`** by `xcodegen`. Edit `project.yml`, then run `xcodegen generate --project .`.
-- Two app targets: `Quill` (main settings app) and `QuillKeyboard` (keyboard extension, `UIInputViewController`).
-- `librime` is vendored as **prebuilt xcframeworks** in `Frameworks/` (built by `scripts/build-librime.sh`); the binaries are committed, so a plain clone builds without the RIME toolchain.
-- RIME data lives in `Resources/SharedSupport/` with **prebuilt** `build/*.bin` — the keyboard works with **no deploy at runtime**.
-- Minimum iOS **26.0**, iPhone only (`TARGETED_DEVICE_FAMILY = 1`).
-- Keyboard UI is 100% self-built SwiftUI (KeyboardKit was removed). No closed-source UI dependency.
-
-## Repository layout
+Display name: **RIME for iOS**. Project/product: `RIMEForiOS`. Keyboard target: `RIMEKeyboard`. Hostless Swift Testing target: `RIMECoreTests`.
 
 ```
-App/                               # main app: QuillApp.swift (entry), SettingsView.swift, icons, entitlements
-QuillKeyboard/                     # keyboard extension: InputController.swift (thin), entitlements
-QuillKeyboardUITests/              # unit tests (swift-testing), hostless bundle
+App/                         RIMEApp, SetupView, assets, App.entitlements
+KeyboardExtension/           KeyboardInputController, Keyboard.entitlements
 Packages/
-  RimeEngine/                      # Swift-direct librime bridge + RimeContext (@Observable)
-  Models/                          # shared domain models (Candidate / KeyAction / KeyboardLayout / SyncToast)
-  KeyboardUI/                      # self-built SwiftUI keyboard + JSON layouts
-  Sync/                            # backend-agnostic WebDAV sync (WebDAVClient / WebDAVCredentialStore / WebDAVSyncOperation)
-Frameworks/                        # 9 prebuilt xcframeworks : librime libglog libleveldb libmarisa libopencc libyaml-cpp boost_{filesystem,regex,atomic}
-Resources/SharedSupport/           # RIME data (schemas, dicts, opencc, lua, lm_sc.gram) + generated build/*.bin
-scripts/build-librime.sh           # cross-compile librime + deps → Frameworks/*.xcframework
-scripts/build-prebuilt-data.sh     # macOS-native librime generates Resources/SharedSupport/build/*.bin
-project.yml                        # xcodegen source of truth (re-generate Quill.xcodeproj after edits)
-README.md                          # intentionally minimal (style rules below)
-AGENTS.md                          # you are here
-THIRD-PARTY-NOTICES.md             # licenses of bundled binaries & RIME data
+  KeyboardModels/            Candidate, KeyAction, KeyboardLayout, panel and toast states
+  RimeEngine/                librime bridge, RimeContext, RimePaths, bounded engine logs
+  RimeSync/                  WebDAV transport, credential storage and file orchestration
+  KeyboardUI/                SwiftUI panels, input model, geometry and JSON layouts
+Tests/
+  Input/                     Shift, routing, real librime and host marked text
+  Layout/                    Row/grid geometry and theme contrast
+  Sync/                      Paths/XML, credentials, failures and cancellation
+  Diagnostics/               Bounded writes, UTF-8 tails and session ownership
+  Rendering/                 Panel intrinsic sizes
+Frameworks/                  Committed binary xcframeworks
+Resources/SharedSupport/     Bundled RIME sources and precompiled build/*.bin
+scripts/                     Optional engine/data rebuilding
+screenshots/                 Keyboard appearance
+project.yml                  XcodeGen source of truth
+RIMEForiOS.xcodeproj/         Generated project and shared schemes
+README.md                    Installation and privacy
+REVIEW.md                    Latest review and validation
+THIRD-PARTY-NOTICES.md        Bundled component licenses
+docs/                       Upstream comparison, tests and change history
 ```
 
-## Build & run
+Bundle IDs: `art.anjing.rimeios`, `art.anjing.rimeios.keyboard`; App Group: `group.art.anjing.rimeios`. These identify a new installation. Old private containers are inaccessible to the new app. Existing users must sync the old keyboard first, then configure and sync the new keyboard, using a distinct device installation ID if necessary. No old-identifier migration layer is retained.
+
+## Build, test and package
+
+Minimum iOS 26, iPhone only, Swift 6.2. Edit `project.yml`, then regenerate:
 
 ```sh
-xcodegen generate --project .      # create Quill.xcodeproj from project.yml
+xcodegen generate --project .
+xcodebuild test -project RIMEForiOS.xcodeproj -scheme RIMEForiOS \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -derivedDataPath build/Debug CODE_SIGNING_ALLOWED=NO ARCHS=arm64
+xcodebuild -project RIMEForiOS.xcodeproj -scheme RIMEForiOS -configuration Release \
+  -destination 'generic/platform=iOS' -derivedDataPath build/Release \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+mkdir -p build/stage/Payload
+cp -R build/Release/Build/Products/Release-iphoneos/RIMEForiOS.app build/stage/Payload/
+(cd build/stage && zip -rqy -X ../RIME-for-iOS-unsigned.ipa Payload)
 ```
 
-Unsigned simulator build:
+Binary simulator slices are arm64. Swift Testing results follow an initial XCTest report of zero tests. For development App Group access, use valid signing and `ENTITLEMENTS_ALLOWED=YES`; unsigned/self-signed installations normally use private containers.
 
-```sh
-xcodebuild -project Quill.xcodeproj -scheme Quill -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' build \
-  CODE_SIGNING_ALLOWED=NO ARCHS=arm64
-```
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` are the sole version source. Both plists reference them. The SharedSupport copy phase removes its destination first and declares output paths; otherwise incremental builds nest directories or fail script sandboxing. Tag pushes trigger `.github/workflows/release.yml`; do not publish or push without authorization.
 
-Simulator build that embeds App Group / keyboard entitlements:
-
-```sh
-xcodebuild -project Quill.xcodeproj -scheme Quill -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' build \
-  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="Apple Development" \
-  DEVELOPMENT_TEAM=<TEAM_ID> ENTITLEMENTS_ALLOWED=YES
-```
-
-`ENTITLEMENTS_ALLOWED=YES` is required so the App Group entitlement is embedded and `containerURL(forSecurityApplicationGroupIdentifier:)` succeeds in the Simulator.
-
-Unsigned device ipa (self-sign on iPhone):
-
-```sh
-xcodebuild -project Quill.xcodeproj -scheme Quill -configuration Release \
-  -destination 'generic/platform=iOS' -derivedDataPath build/dd build \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
-mkdir -p /tmp/ipa_stage/Payload
-cp -R build/dd/Build/Products/Release-iphoneos/Quill.app /tmp/ipa_stage/Payload/
-cd /tmp/ipa_stage && zip -r -y -X Quill-unsigned.ipa Payload
-```
-
-- The `Copy SharedSupport` build phase (`rm -rf` + `cp -R Resources/SharedSupport` → `.app/SharedSupport`) declares its destination in `outputPaths`, so the script sandbox (default `YES`) allows the write. Do not revert to a bare `cp -R` onto the existing directory — it nests `SharedSupport/SharedSupport` on every incremental build.
-- **Releases are automated**: pushing a `v*` tag (`.github/workflows/release.yml`, macOS runner + `actions/checkout@v7`) builds the same unsigned device ipa and publishes a GitHub Release with auto-generated notes via `gh release create`. Release steps: bump `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` in `project.yml` (the single version source — both plists reference `$(MARKETING_VERSION)`), commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Note the runner image names Xcode bundles with a `.app` suffix (`Xcode_26.6.0.app`) — don't append another one when selecting.
-- Rebuilding librime from source is optional (Frameworks are committed): `scripts/build-librime.sh` expects a `librime/` clone (containing its `deps/`) at the repo's **parent directory** (`$ROOT/../librime`).
-- Enabling the keyboard in the Simulator requires **Settings › General › Keyboard** (editing the `com.apple.keyboard.preferences` plist alone is not enough). Grant Full Access so the extension can read the App Group container.
-
-## Package graph (dependency direction)
+## Dependency boundaries
 
 ```
-Quill → embeds QuillKeyboard
-QuillKeyboard → KeyboardUI → Sync → RimeEngine → Models
-              → RimeEngine
-              → Models
+RIMEForiOS embeds RIMEKeyboard
+RIMEKeyboard → KeyboardUI → RimeSync → RimeEngine → KeyboardModels
+                         → RimeEngine
+                         → KeyboardModels
 ```
 
-The main app only displays keyboard setup status and version. It does not initialize librime or link KeyboardUI.
+The main app only displays setup status and version; it neither links KeyboardUI nor starts librime. Backend/network details stay in RimeSync; RimeEngine remains independent of WebDAV. Keep names tied to responsibilities rather than the product brand. Comments explain constraints and reasons, not obvious code or abandoned implementations.
 
-## Architecture
+State ownership:
 
-### State is split by domain
+- `RimeContext`: process engine, candidates, preedit and one-shot commit. Internal mutable state is ObservationIgnored and protected by NSRecursiveLock; UI publication runs on the main thread.
+- `InputState`: controller-local host state and current panel.
+- `KeyboardSyncState.shared`: process-wide maintenance gate and transient result.
+- `SyncSettingsModel`: credential draft and connectivity testing. Its separate KeyboardInputModel never changes host language or writes draft text to the host.
+- `KeyboardInputModel`: layout, language and Shift. Cached rows only depend on these low-frequency values; candidate/preedit observation stays in child views.
 
-- `RimeContext`: engine state (candidates, preedit, highlighted candidate, one-shot commit). Internal engine fields are ObservationIgnored and protected by the engine lock.
-- `InputState`: per-controller host text state and panel mode.
-- `KeyboardSyncState.shared`: process-wide sync gate and toast. A replacement controller sees an existing sync immediately.
-- `SyncSettingsModel`: keyboard-local credential draft, selected field and connection-test state. The model persists across panel switches; it loads saved credentials once.
-- `KeyboardViewModel`: input layout/language/shift. Credential editing uses a separate instance so it does not change the host input language.
+## Engine and data invariants
 
-Credential fields stay in a single vertical list while editing. Each row stacks its title above a wrapping value, and hides placeholders during editing. Selecting a row shows its caret and Paste/Clear controls, with the existing key grid below the list; the panel header has one Done button. Passwords are always visible. Fields remain local draft controls, not native TextField/SecureField controls, so they do not request another system keyboard inside the extension. Draft keys never reach UITextDocumentProxy or librime. Return advances to the next row. Passwords and keystrokes are never logged.
+- Initialize data_size on RimeTraits, RimeContext and RimeCommit. Zero values silently disable optional fields/context results.
+- Setup happens once per process; a second glog initialization can crash. Initialize in the background, create/publish the session on the main thread, and serialize all API access under the recursive lock.
+- Read get_commit exactly once and retain it until pollCommit consumes it. Never infer a commit merely from process_key returning true.
+- RimeEngineC explicitly retains Lua and octagram registration objects. Static linking alone can discard them. levers must be registered by deployer_initialize for user dictionary synchronization.
+- Runtime full deployment is absent. Read bundled precompiled data; initialization and session creation are allowed. Keyboard extension memory limits vary by device/OS; do not treat a historical ~77 MiB observation as a universal guarantee.
+- Select luna_pinyin, with the first available schema as fallback. There is no runtime schema picker.
+- App Group user data is `Rime/`; private data is `Application Support/RIMEForiOS/Rime/`. Credentials are stored under the corresponding group/private support directory. Main app and extension private containers are separate.
+- Never unlink LevelDB LOCK files. Kernel lock lifetime protects the existing inode.
+- Maintenance runs on one serial queue, including deferred session cleanup. Owner tokens prevent an old controller from destroying a replacement controller's session. Recreate only after checking native composition, literal composition and pending commit under the lock.
 
-Keep candidates/preedit reads in child views so typing does not invalidate the keyboard root. Pass the engine explicitly to `KeyboardViewModel.consume`; do not retain a context in the model.
+Bundled data is managed upstream, not hand-edited. Enhanced files track qvshuo/luna-pinyin-enhanced `7c47d6d` (2026-08-19); Japanese files track gkovacs/rime-japanese `4c1e651`. Preset pinyin/schema/dictionary files track rime/rime-luna-pinyin `56b934b`; essay/symbols come from librime's minimal data. default.yaml only changes schema_list to existing luna_pinyin/luna_pinyin_simp and page_size to 9. The enhanced custom patch also references Japanese. Desktop frontend custom files remain verbatim and inert on iOS. OpenCC data comes from ver.1.1.9; lm_sc.gram is upstream's committed grammar. List patches require @N or /+/ /= operators.
 
-### RimeContext essentials
+Reference Squirrel is the latest stable **1.1.2**, commit `876adeb`; its librime pin is **1.16.0**, `a251145d`. The build clone uses the same pin. Update binaries/data only deliberately with a stable release and validate both platforms. Latest frontend code does not imply a need to upgrade librime.
 
-- **`RimeTraits.data_size` must be initialized** with `rimeStructInit` (`sizeof(RimeTraits) - sizeof(data_size)`) or optional fields (`log_dir`, …) are ignored.
-- **`RimeContext` / `RimeCommit` are initialized with `RIME_STRUCT(Type, var)`** so `data_size` is nonzero; otherwise `RimeGetContext`/`RimeGetCommit` return `False` and the keyboard shows no preedit/candidates even though keys are "handled".
-- **Commit text must be captured immediately**: `RimeGetCommit` returns the commit only once per composition; `refreshContext()` consumes it into internal storage. Read it via `pollCommit()` only.
-- **Static plugins require explicit references**: `RimeEngineC/modules.cpp` retains the Lua and octagram registration objects and configures `traits.modules`. Merely bundling their objects in librime.a does not make the linker keep them.
-- **`setup()` runs once per process** (`isSetup` flag + lock). Calling `InitGoogleLogging()` twice crashes inside glog.
-- Session is **lazily created under the engine lock** (`createSessionIfNeeded()`). `start()` pre-creates one on the main thread so the first keypress is cheap; synchronization and reload run on the serial maintenance queue.
-- After creating a session the bridge selects **`luna_pinyin`** (fallback: first available schema) and sets `ascii_mode=false`. `RimeContext` no longer persists a preferred schema; there is **no schema switcher UI**.
-- All RIME access is serialized with `NSRecursiveLock`.
+Optional scripts expect `../librime` and its dependencies. build-librime.sh enables merged plugins, iOS-compatible Lua and disables cross-compiled tools. Preserve OpenCC's BUILD_OPENCC_DATA/TOOLS guards when updating its sources. build-prebuilt-data.sh clears SharedSupport/build **before** deploying so incremental skipping cannot leave an empty result. Do not regenerate dictionary assets for a naming-only change. OpenCC 1.1.9 was rebuilt only to remove an embedded old working-directory path; SHARE_INSTALL_PREFIX=SharedSupport keeps future fallback paths independent of the machine.
 
-### Data model — no deploy path
+## Input and appearance
 
-`deploy()` / `startMaintenance` is **removed**. `start()` is just `setup → initialize` (a full deploy exceeds the keyboard extension's ~77MB memory limit and gets it killed by Jetsam — the keyboard appears then exits ~2s later).
+- Manual single/double Shift begins literal composition on the next character, including numbers/fullwidth punctuation. Letters, digits and symbols stay in one candidate until Space, Return or candidate selection commits once. Space confirms without appending a space; without composition it inserts a literal space. English automatic initial uppercase does not start literal composition. Backspace removes a complete Unicode character.
+- MarkedTextWriter clears marked text, unmarks, then inserts one combined result. Bare unmark can commit the last letter; multiple proxy insertions can reorder a composition and following symbols in some hosts.
+- Backspace with no preedit goes directly to the proxy. Do not add extra context re-reads to the repeat path. Double-space punctuation only follows two literal spaces within 0.35 s; candidate commits and keyboard activation reset it.
+- Default requests Chinese; asciiCapable requests English. Other host types fall back to Chinese. Number/symbol pages remain manual layout choices. Return uses the host label without preedit, otherwise ⏎; highlight only when host text exists without preedit.
+- SwiftUI colorScheme follows the host. No controller heuristic or pinned override style. Solid keycaps and an opaque preview bubble; dark key overlays assume a #2B2B2B system backdrop. Theme blend tests check this assumption.
+- Input/log height is 266 pt, sync 480 pt, inline editing 580 pt. UIInputView.allowsSelfSizing plus hosting intrinsicContentSize drives system sizing. Mount hosting in viewWillAppear to avoid a loading layout shift. Log export alone temporarily uses 75% of the scene height.
+- Key height 45, row gap 11, horizontal padding 7. RowLayoutMath keeps geometry pure: fixed function keys, elastic space, return-label borrowing, aligned z/s and m/k. Widths/gaps determine actual frames; don't replace them with arbitrary weights.
+- Candidate scroll views hide scroll edge blur. Collapsed candidates use natural widths and LazyHStack; expanded candidates use a lazy grid and a stable snapshot. The initial native page has 9 candidates; expansion fetches up to 77. First-row alignment uses the actual selected/unselected cell height. No candidate comments are rendered.
+- All menu buttons align to q and offer only the other two panels. Credential editing stays in a vertical title/value list with one Done button, a visible password and active-row Paste/Clear. Avoid native text fields that summon another keyboard inside the extension.
 
-- Both targets read prebuilt data from `SharedSupport/build/` (`prebuilt_data_dir`, default `shared_data_dir/build`).
-- Writable user data goes to **App Group/Rime** when available; without an App Group (e.g. self-signed ad-hoc) the app and the keyboard each fall back to their own private `Application Support/Quill/Rime` —**these are NOT synced** with each other (no cross-process mechanism without an App Group).
-- librime resolves `user/build` (staging) → `prebuilt` (Bundle), so candidates work without deploying.
+## Synchronization and diagnostics
 
-## UI: theme & key caps
+Credentials require HTTPS without embedded auth/query/fragment, safe relative paths and a one-component device ID. Defaults: Rime_Sync and iPhone. Save tests connectivity before atomically persisting JSON with mode 0600, iOS file protection and backup exclusion. This is system-protected storage, not application-level encryption.
 
-- **Key caps are pure solid color; press = single pressed tone.** `Theme.keyBackground` applies a single `RoundedRectangle` fill — no shadow, stroke, or gradient. The confirm key is a **single constant** `#007AFF` (fcitx5-ios `highlightBackground`), shared across light/dark.
-- Press feedback is a **uniform pressed fill** via `Theme.fillColor(style:isPressed:)` — every key style (`normal`/`special`/`confirm`) presses to the single `Theme.pressedKeyBackground`: light `#F0F1F3` (dims, near-white), dark ≈ `#6B6B6B` (brightens). The confirm key's foreground swaps to `keyForeground` on press so the label stays visible on the light pressed tone. The press fill animates with an explicit `0.05 s` ease-out (`Key.swift`), overriding SwiftUI's system default button press animation (~0.2 s) that felt laggy.
-- **Preview bubble background is the opaque `Theme.previewBubbleBackground`** (light `#FFFFFF`, dark `#585858` = the dark `keyBackground` mixed over the `#2B2B2B` backdrop). It must **not** reuse `keyBackground` — a semi-transparent bubble floating over key seams reads as "transparent" in dark mode.
-- **Theme follows SwiftUI `@Environment(\.colorScheme)`** (fcitx5-ios's simplest approach). `KeyboardView` picks `Theme.dark`/`Theme.light` itself; the environment follows the **host app's** appearance, so a light app typing under a dark system stays light (fcitx5-ios behavior). `InputController` never resolves dark/light itself and rebuilds the root view only for `keyboardType`/`returnKeyType` changes. Do not reintroduce a `resolvedIsDark()` host heuristic (`keyboardAppearance` → trait → `UIScreen.main`) or any `overrideUserInterfaceStyle` pin — it was removed on purpose (below).
-- **The keyboard follows the host app's appearance directly, no pin**: a transient `overrideUserInterfaceStyle = UIScreen.main.traitCollection.userInterfaceStyle` (system) pin was added to hide a one-frame flash on appearance toggles, but it forces the **system** theme over a per-app override and is only cleared when the controller's own trait *changes* — so a persistently light app under a dark system stays dark forever. Removed to match fcitx5-ios; expect a possible one-frame flash when the host style differs from the system's.
-- **Light theme is opaque** (`keyBackground` and `specialKeyBackground` both `#FFFFFF`; light function keys stay white). **Dark theme is fcitx5-ios-style semi-transparent overlays** blended over the system dark backdrop (`#2B2B2B`). The alphas are **derived, not hand-picked**: `Theme.overlay(base:target:)` solves the alpha that makes a neutral-grey base (white or `#858585`) hit the target opaque grey over `darkBackdrop` — key →`#585858`, special →`#3A3A3A`, pressed →`#6B6B6B`, candidate selection →`#5A5A5A`. `darkBackdrop` is the single assumption point; if iOS ever changes the keyboard backdrop color, re-tune it and re-run the blend assertions in `ThemeTests.swift`.
-- **The keyboard panel background is transparent** — `Color.black.opacity(0.001).ignoresSafeArea()` in `KeyboardView` — the system keyboard container draws the background. The hosting controller's view is transparent too.
-- **Keyboard slides up smoothly via `viewWillAppear` hosting**: the `UIHostingController` is created in `viewDidLoad` but added as a child + constraints activated in `viewWillAppear` (mounting in `viewDidLoad` causes a huge layout shift). Height follows SwiftUI intrinsic size (266 pt input/log, 480 pt sync, 580 pt inline sync editing). The root UIInputView enables allowsSelfSizing and the hosting controller tracks intrinsicContentSize, so UIKit resizes when the inline editor appears. Do not substitute manual safe-area math or preferredContentSize.
+Manual sync uses a process gate, unique staging directory and at most two parallel device downloads. Listing/download failure aborts before applying files. Only *.userdb.txt/custom_phrase.txt are transferred; foreign phrases overwrite deterministically in sorted device order. Blocking engine maintenance merges dictionaries, restores installation.yaml and recreates the session before input resumes. Upload/read failures are reported. Timeout cancels network work but waits for noninterruptible maintenance, so completion can exceed the deadline. Always clean staging. No background sync, local mirror or forced deploy.
 
-## UI: keyboard dimensions & key widths
+Engine logs: Logs/engine.log. Keyboard logs: Logs/Keyboard/keyboard.log. BoundedLogFile serializes writes; each has one current and one previous file at 256 KiB each, including oversized legacy truncation. Native logging starts at warning and avoids independent unbounded glog files. Never record keystrokes/passwords. PID/session markers indicate incomplete cleanup, not proof of a crash.
 
-### Dimensions are literal integers (no runtime scaling)
+The log view reads the latest 8 KiB per source once per second in a view-scoped task and stops when absent. No manual refresh/clear APIs. Export snapshots four files (roughly 1 MiB), then presents an expanded UIKit navigation popover with Close. Wait for layout before presentation and restore height on dismissal. Keyboard extensions cannot present outside their system-owned region; confirmationDialog/text selection menus can invoke unavailable extension features. Deletion confirmation stays inline.
 
-`keyHeight: 45`, `rowSpacing: 11`, `candidateBarHeight: 40`, top/bottom padding `8/5`, left/right padding `7` → `totalHeight` **266 pt**. The keyboard is bottom-anchored (system places the view bottom-flush), so `keyboardPadding.bottom` fixes the keys' bottom edge; changing `keyHeight`/`rowSpacing` shifts only the top.
+## Verification and scope
 
-### Key widths are a grid model, not weights (`RowLayoutMath`)
+See docs/testing.md for core coverage and docs/input-method-comparison.md for the current upstream evaluation. Validate geometry, input commits, sync failures/cancellation and bounded logging; do not multiply tests of trivial aliases, literal UI text or cosmetic timing. Liquid Glass needs a running UIKit host for visual checks, not ImageRenderer. Do not claim simulator observations are device memory measurements or that mocked transport tests establish real WebDAV interoperability.
 
-A global letter cell `L = (gridWidth − 9×6)/10` derives from the 10-key rows, then row composition decides:
-
-1. **Bottom rows** (contain a space key): `123/ABC` and 中/英 are `fixed` 67.5 / 45 pt; the return key is `max(67.5, labelWidth)` and **steals from the space key** when the label is long (space floors at `2×keyHeight`).
-2. **Letter row 3** (⇧/⌫): both square 45 pt; the 7 middle letters are `L`, flush left/right; the two gaps are `g = 1.5L − 36`, which makes **z align with s and m with k exactly**.
-3. **Numbers/symbols row 3** (#+=/123 + ⌫ both fixed 45): middle keys flex-share the remainder.
-4. **Pure-letter rows**: 10 keys flush at `L`; 9 keys centered with `(L+6)/2` side padding.
-5. Anything else falls back to weight-based sharing.
-
-`RowLayout` carries per-key `widths` and per-pair `gaps`; `KeyboardRowView` renders with `HStack(spacing: 0)` + `Spacer` frames so the ⇧/⌫ alignment gaps aren't doubled. `KeyDescriptor.fixedWidth` comes from the JSON `"fixed"` field and survives `localizedDescriptor`/`effectiveDescriptor` rebuilds.
-
-### Candidate bar & expanded grid
-
-- Both candidate scroll views explicitly hide system scroll edge effects on all edges; automatic blur must never obscure candidate text.
-- Collapsed: horizontal `ScrollView` + `LazyHStack` of **all** candidates, natural widths (never forced to fill the row); scrollable past the viewport. Right chevron in a fixed 34 pt column, above the fold of the scroll.
-- Expanded: a **grid replaces the entire keyboard** (no residual collapsed bar, avoiding duplicated first-row candidates); background stays transparent. Line-breaking measures text widths (`CandidateGridLayout`, pure functions, unit-tested) — never scales fonts or stuffs cells.
-- **Grid aligns with the collapsed bar**: horizontal padding = `theme.keyboardPadding.leading` (7 pt); the first row's **center** is pinned to `barHeight / 2` → top inset `barHeight / 2 − firstRowHeight / 2`, where `firstRowHeight` is the row 0 **actual** height — `candidateSelectionHeight` (34) when the highlighted candidate is in row 0, else `candidateCellHeight` (32). Do **not** compute from the fixed 32 pt cell — when candidate 0 is the highlighted pill the row is 34 pt and centering on 32 pt drops the first word ~1 pt.
-- Selected candidate = pill (height 34 / h-padding 6 / corner radius 9) shared verbatim between bar and grid; unselected cells 32 pt tall with 10 pt h-padding. Chevrons use fixed grey `0x4D5650` (not `.secondary`).
-- Tapping a candidate commits and auto-collapses; an empty composition also auto-collapses. Comments are not rendered; the bar keeps its fixed height even when empty.
-
-## Input behavior
-
-### Return key (dynamic label & primary highlight)
-
-Always acts as a return key. With a RIME preedit: shows `⏎`, **no** highlight. Otherwise shows host-driven `returnKeyLabel` (go→前往, search→搜索, send→发送, next→下一步, done→完成, emergencyCall→紧急呼叫, …) and is blue when `inputState.hasInputText` and there is no preedit.
-
-- The dynamic label/highlight lives in `KeyboardRowView` (private child of `KeyboardView`) in its own `body` — **only** rows containing a return key read `rimeContext.preedit`/`inputState.hasInputText` (short-circuited ternaries), so typing re-renders just the bottom row. `currentRows` is cached by (layout, language, shift) and never flows through that cache. `ReturnLabelWidth` memoizes label measurement per process.
-- `InputController` maintains `hasInputText` in `textDidChange` (and on focus in `viewWillAppear`) via `UIKeyInput.hasText`, with a `documentContextBefore/After`+`selectedText` fallback (`hasText(in:)`) because some fields report an unreliable `hasText`; it also sets it `true` eagerly on committed-text insertion so the highlight updates before the next `textDidChange`.
-- The candidate bar / expanded grid / key rows are separate private subviews so `candidates`/`highlightedCandidateIndex` reads stay out of the keyboard root's body.
-- `UIReturnKeyType` is the Swift name (not `UIKeyboardReturnKeyType`).
-
-### Backspace
-
-Keep it simple: if `rimeContext.preedit` is empty → `textDocumentProxy.deleteBackward()` directly (no RIME round-trip); otherwise let RIME delete the composition, falling back to `deleteBackward()` only when RIME reports unhandled. **Do not** add proxy re-reads or preedit-change heuristics into the backspace path — that regresses rapid backspace deletion. `syncText()` clears marked text when the composition becomes empty via `setMarkedText("")` + `unmarkText()` (a bare `unmarkText()` would *finalize* the last marked letter, needing two backspaces). Commit paths use `MarkedTextWriter`: clear marked text, unmark, then insert the final text. Direct-input suffixes are combined with the pending composition into one insertion; do not rely on the host preserving the marked-text end caret after unmarking.
-
-### Space bar & manual sync trigger
-
-- Space is a normal non-repeating key. Double tap within 0.35 seconds inserts `。` / `.` only after a literal space; committing a candidate resets the tracker. Showing the keyboard resets the tracker too.
-- With no composition, the candidate bar menu opens Sync or Log; the same menu returns to the input keyboard. Candidate changes return to input without a polling task.
-- Sync starts only from the Sync button, without preedit. No space hold timer or progress hint remains.
-- Input is gated only while `KeyboardSyncState.isSyncing`. Result toasts dismiss after 2.5 seconds (success) or 4 seconds (failure) and do not block typing.
-- No App Group is the supported self-sign baseline. Full Access gates extension networking; do not show an unreliable main-app permission status row.
-
-### Shift & language
-
-- **English starts uppercase-once.** Switching to `.english` (via `.asciiCapable` keyboard type or the language toggle) sets `shiftState = .uppercaseOnce`; the first letter produces uppercase then reverts to lowercase. Space/backspace do **not** consume it; switching to numbers/symbols **does**.
-- 单击临时大写; double-tap within 0.35 s locks caps; locked-tap unlocks (ShiftTap state machine, unit-tested).
-- Manual Shift starts literal composition on the next character, including when switching to numbers/symbols first. All following letters (including lowercase), digits and punctuation remain one preedit candidate until Space/Return/candidate selection. Space confirms the composition without appending a trailing space; with no composition it inserts a literal space. Locked Shift starts a new literal composition after each commit. Automatic English uppercase-once does not start this mode. Credential drafts stay independent.
-- `RimeContext` serializes the literal buffer with native engine access. It preserves native raw input when entering the mode, publishes one literal candidate, removes whole Unicode graphemes on Backspace, and uses the existing one-shot commit path. Full-width symbols bypass native ASCII keycodes so they cannot trigger punctuation or number-based candidate selection. Session recreation also checks this buffer.
-- Tapping 中/英 flips `inputLanguage` and writes `ascii_mode` back to RIME (`setAsciiMode`) after the key returns; commits pending composition first.
-
-### Symbols page auto-return
-
-`KeyboardViewModel.autoReturnSymbols` holds sentence-ending chars (（ ） @ “ ” 。 ， 、 ？ ！ 【 】 ｛ ｝ # % ^ * + = _ \ | ｜ 《 》 & ·) — tapping one inserts the char and returns to the letter page (iOS quick-type behavior). Other symbol keys stay on the page.
-
-### Keyboard types
-
-Only `.default` and `.asciiCapable` are honored (fcitx5-ios ignores `UIKeyboardType`; iOS itself substitutes the system keyboard for number/URL/etc.). `.default` → Chinese mode (`ascii_mode=false`); `.asciiCapable` → English (`ascii_mode=true`); everything else falls back to `.default`. No numeric layout pages; the pure-number JSONs and `.numeric` cases were removed. Manual number/symbol pages (`numbers-zh/en`, `symbols-zh/en`) remain via the "123" / "#+=" keys. `InputController` observes `keyboardType`/`returnKeyType` in `textDidChange`/`viewWillAppear` and rebuilds the root only on change.
-
-## Settings and sync panels
-
-The main app uses a ScrollView with a title, enablement status card, system settings link and version. Status text is primary-colored; only the enabled checkmark is green. The title and page share the system grouped background, with explicit vertical separation. Panel navigation and actions use native Liquid Glass; text fields and log content use stable readable surfaces. Sync and Log have dedicated headers instead of a candidate bar. All panel menu labels align to the q key's leading inset and exclude the current panel; the menu is the only panel-switching control.
-
-The keyboard Sync panel offers server URL, username, password, sync directory and installation ID, plus Save, Delete Credentials and Sync. The sync action is larger and blue when enabled; field scroll edges have no blur. Save validates, tests connectivity, then writes an immutable snapshot; failure preserves both the previous saved configuration and the draft. Controls are disabled during testing/sync; deletion needs confirmation. Defaults are `Rime_Sync` and `Quill`. Multiple devices must use distinct installation IDs.
-
-`WebDAVCredentialStore` uses JSON in App Group or private Application Support/Quill. It serializes file access, writes atomically with iOS complete-until-first-authentication protection, sets mode 0600, and excludes the file from backup. This is OS-protected file storage, not application-level encryption. Base64 is not used. Keychain entitlements and APIs are removed; existing Keychain credentials are not migrated, so upgrades require reconfiguration.
-
-## Sync: WebDAV
-
-`WebDAVSync` owns the atomic process-wide in-flight gate and a dedicated serial engine queue. `WebDAVSyncOperation` owns file orchestration, independent of the engine and credential store:
-
-1. Snapshot and validate credentials once. Only HTTPS with no embedded credentials/query/fragment is allowed; relative paths cannot contain empty/dot segments, backslashes or control characters. Installation ID must be one directory component.
-2. Create a unique staging directory, removed on all exits.
-3. List foreign device directories; 404 at the root means a first sync. Download at most two devices concurrently, retaining only userdb and custom_phrase.txt. Any listing/download error aborts before applying files.
-4. Atomically apply foreign custom_phrase.txt in sorted device order (existing overwrite semantics, deterministic result). librime performs the userdb merge.
-5. On the engine queue, set staging and installation ID, run blocking maintenance, restore installation.yaml's normal sync directory, and recreate the session before resuming the caller. Session recreation checks the real composition and pending commit under the engine lock.
-6. Create remote parent directories in order, then upload only the two relevant files. Any upload/read error fails the operation.
-
-`syncWithTimeout` uses structured concurrency with a 60-second deadline. On timeout, cancel network work but await the noninterruptible engine step before releasing the UI gate. There are no detached zombie syncs. The exact return can exceed the deadline if librime is still completing its blocking maintenance. Controller destruction is queued behind engine maintenance and guarded by a session owner token, so an old controller cannot destroy a replacement controller’s session.
-
-No periodic sync, local mirror, full deploy or runtime schema switcher. `deployer_initialize` still loads levers after initialize so user_dict_sync tasks are registered.
-
-## Logs & diagnostics
-
-- Engine stderr/glog: a process-wide nonblocking pipe reader writes to `Paths.logDirectory/quill.log` through a bounded serial writer (256 KiB current + one previous file). Native logging starts at warning level and writes only to stderr, avoiding duplicate glog level files. Startup prunes legacy named glog level files, never unrelated directories. The capture and readers keep the same cached log URL for the process.
-- Keyboard lifecycle/panel/sync events: `Logs/Keyboard/keyboard.log`, serialized writes, 256 KiB rotation and one previous file. No signal or uncaught-exception handlers.
-- A PID/session ownership marker records whether the previous process completed cleanup. Only log an unfinished previous session if its PID is gone; OS reclamation can cause this, so it is not a confirmed crash. An old controller cannot delete a newer controller's marker.
-- The Log panel shows the latest 8 KiB each of keyboard and engine logs. A SwiftUI-scoped task reads them on a utility task once per second and is cancelled when the panel leaves the view tree. There are no manual refresh or log clear APIs. Both writers use BoundedLogFile (256 KiB current + previous), including truncating oversized legacy files at rotation.
-- Export creates a bounded snapshot of four current/previous files (about 1 MiB maximum). UIKit presents the activity controller in a navigation popover from the hosting controller, with a standard Close button. Presentation waits for the expanded keyboard layout and then sets the popover preferred content size. Export temporarily expands the intrinsic keyboard region to 75% of the current screen height; activity completion/dismissal restores the normal height. The OS still confines keyboard extension presentations to their own region.
-- Credential deletion confirmation stays inline: `.confirmationDialog` raises `Feature not available in extensions of type com.apple.keyboard-service` in the keyboard extension. Do not use text selection menus in the log panel.
-
-## RIME data conventions
-
-- `Resources/SharedSupport/` mirrors **`github.com/qvshuo/luna-pinyin-enhanced`** (formerly `qvshuo/squirrel`; not rime-ice). The qvshuo-sourced files (everything except the preset files listed below and the generated `build/`) must track the upstream clone (currently master `7c47d6d`, synced 2026-08-19) and are **never hand-edited**. Its `japanese.*` files are synced verbatim from `gkovacs/rime-japanese` (master `4c1e651`).
-- **Preset data sources are per-file**: `pinyin.yaml`, `luna_pinyin.schema.yaml`, `luna_pinyin.dict.yaml`, `luna_pinyin_simp.schema.yaml` track **`rime/rime-luna-pinyin`** (master `56b934b`); `essay.txt` and `symbols.yaml` are **librime's bundled `data/minimal` copies** — exactly what squirrel 1.1.2 ships through its librime 1.16.0 pin (do **not** "update" them to rime-essay/rime-prelude master); `default.yaml` is librime's `data/minimal/default.yaml` with two deliberate edits (below); `opencc/` is generated from **opencc `ver.1.1.9`** (16 `.ocd2` + 14 `.json`; older than 1.4.x so no `hk2sp`/`s2hkp`/`opencc_config.schema.json`); `lm_sc.gram` is **qvshuo's committed grammar**.
-- **`default.yaml` must reference only existing schemas** (a missing schema fails `workspace_update` / deploy). It is librime `data/minimal/default.yaml` with exactly two edits: `schema_list` = `luna_pinyin` + `luna_pinyin_simp` (replaces `cangjie5`), and `menu.page_size` = 9 (vs 5). `default.custom.yaml` lists `luna_pinyin` + `japanese`; only `luna_pinyin` is ever selected by Quill.
-- **Patching list items needs `@N` refs or `/+`/`/=` operators** — a bare `switches/options` key fails with `copy on write failed; incompatible node type` and breaks the schema build. `luna_pinyin.custom.yaml` therefore avoids `switches/options`.
-- `luna_pinyin.custom.yaml` mounts `melt_eng` as a secondary English translator and `luna_pinyin_extended.dict.yaml` as the translator dictionary, plus `lua_filter@*reduce_english_filter` and the `lm_sc.gram` grammar. `melt_eng` needs the merged plugins build (below).
-- Desktop-only custom files (`squirrel.custom.yaml`, `weasel.custom.yaml`, `ibus_rime.custom.yaml`) are inert on iOS and kept verbatim for parity.
-
-### Version alignment — squirrel / librime
-
-- **Both clones sit at released versions, never master** (tracking latest commits is deliberately avoided — unstable): the reference clone `$ROOT/../squirrel` (**`rime/squirrel`**) is at release tag **1.1.2** (`876adeb`, detached HEAD) with submodules at their 1.1.2 pins (librime `a251145d` = **1.16.0**, plum `4c28f11`, Sparkle `41847a5`), and the build clone `$ROOT/../librime` is pinned to that same `a251145d` (1.16.0).
-- **Upgrades are manual and follow squirrel releases** (squirrel upgrades once → we upgrade once): on each rime/squirrel release, `git fetch origin tag <tag> && git checkout <tag>` in `../squirrel`, `git submodule update --init --recursive`, pin `$ROOT/../librime` to the librime version that release ships, then rebuild both `Frameworks/` and `SharedSupport/build/` (scripts below).
-- librime's `deps/*` submodules keep their own pins; **opencc** is at librime 1.16.0's pin **`ver.1.1.9`** (`556ed224`), aligning with squirrel 1.1.2 (it was briefly at head `ver.1.4.0`; reverted by decision 2026-08-19). The opencc checkout carries a local patch — `BUILD_OPENCC_DATA`/`BUILD_OPENCC_TOOLS` CMake guards on `add_subdirectory(data)`/`add_subdirectory(tools)` — that must be **re-applied after any opencc source change** (e.g. `git checkout`), else the build scripts' `-DBUILD_OPENCC_DATA=OFF` is silently ignored and the iOS cross-compile tries to build data/tools.
-
-## librime build (prebuilt Frameworks)
-
-- **`BUILD_MERGED_PLUGINS=ON` is required** — the default `OFF` produces a `librime.a` without `levers` linked, so `RimeStartMaintenance`/`RimeDeploy` return `false` and no `.bin` files are generated. `scripts/build-librime.sh` sets it.
-- `librime-lua` is patched to compile the in-tree Lua 5.4.8 with `LUA_USE_IOS` (`system()` is unavailable on iOS; without the guard `loslib.c` fails). This powers `lua_filter@*reduce_english_filter`.
-- `librime-octagram` is built with `BUILD_TOOLS=OFF` so its `build_grammar` host tool isn't cross-compiled for iOS. This powers `lm_sc.gram`. (The aggregate `-DBUILD_TOOLS=OFF` propagates to the plugin: cmake `option()` never overrides an existing cache variable, so octagram's `add_subdirectory(tools)` is skipped in iOS builds — the macOS-native host build intentionally leaves it ON to generate `lm_sc.gram`.)
-- `boost_system` is header-only since Boost 1.82 — no separate library.
-
-### Prebuilt data regeneration
-
-Run `scripts/build-prebuilt-data.sh` (macOS-native librime + `rime_deployer`) after changing schema/dictionary files to regenerate `Resources/SharedSupport/build/*.bin`. The script `rm -rf`s `SharedSupport/build/` **before** `rime_deployer --build` — it must not delete afterwards, or the incremental logic (which treats `shared_data_dir/build` as prebuilt and skips up-to-date artifacts) would wipe the skipped `.bin` files.
-
-## Engine pitfalls (will the keyboard appear "broken")
-
-- **glog double-setup crash**: `InitGoogleLogging()` allows one call per process. Keep the `isSetup` flag + lock guard.
-- **Extension memory ceiling ~77MB**: full deploy gets the extension killed by Jetsam (keyboard appears then exits ~2s later) — the usual "keyboard闪退" root cause. Data must remain prebuilt.
-- **`data_size` trinity**: `RimeTraits` / `RimeContext` / `RimeCommit` all need nonzero `data_size` or you get "keys handled but no preedit/candidates/commit".
-- **Commit is one-shot**: consume through `pollCommit()`; a second `RimeGetContext`/`RimeGetCommit` call sees nothing.
-- **Never access a session concurrently**: input uses the main thread, maintenance/reload uses its serial queue, and all engine operations hold the recursive engine lock.
-- **Never unlink LevelDB LOCK files**: locks are released by the kernel when a process exits; deleting a lock file can let another process lock a new inode while the database is still in use.
-- **`reduce_english_filter` runs but is a no-op with the current data (investigated, kept)**: it only scans the first `idx` candidates and English short words never rank high here — for input `rug`, Chinese candidates (quality ≈ 1.87 = `exp(normalized_weight)` + `initial_quality` 1.2 + length term) beat melt_eng's `rug` (quality = `initial_quality` 1.1 ≈ rank #44), outside the scan window. The rime-ice doc behavior assumes English ranks #1. Net effect: short English words are always at the bottom anyway; the config is harmless. Verified with a macOS-host librime repro against the same prebuilt data.
-
-## Testing
-
-```sh
-xcodebuild test -project Quill.xcodeproj -scheme Quill -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' CODE_SIGNING_ALLOWED=NO ARCHS=arm64
-```
-
-- Scheme test target = `QuillKeyboardUITests` (swift-testing; the hostless bundle links `KeyboardUI` + `RimeEngine` + `Models` + the binary xcframeworks).
-- Cover `RowLayoutMath`, `CandidateGridLayout`, `ShiftTap`, `LayoutAction`, `SyncToast` messaging, and `ThemeFillColor` (incl. the dark blend assertions). Layout/grid math must live as **pure functions** in the library so the test bundle and the app share one implementation.
-- Note: `All tests` may first appear to run from XCTest (`Executed 0 tests`) before the swift-testing suites are listed.
-- Regression suites cover WebDAV paths/XML, credential validation/storage, draft editing, failed saves, file orchestration failures/cleanup, log UTF-8 tails/rotation/session ownership, and deep/light panel sizing. Liquid Glass cannot be rendered faithfully by ImageRenderer; visual checks must use a running UIKit app or keyboard extension. Test orchestration through an injected transport/engine runner, without networking or deploying RIME.
-- Toast timing lives in the process-wide sync state. Do not add wall-clock tests for cosmetic dismissal delays.
-
-## Conventions for agents
-
-- **README style (user-curated — subtract, never fatten)**: the user manually trimmed the README (removed marketing copy like「开箱即用」and the gesture/操作 table). When touching the README, only correct facts or remove; **do not** reintroduce feature showcases, usage/gesture tables, or a「使用」section. Installation wording stays as-is: unsigned ipa + self-sign via AltStore/Feather. Keep interaction descriptions aligned with the keyboard panels.
-- **Do not** reintroduce removed behaviors: deploy path, schema switcher, numeric keyboard types, iCloud/local `Rime_sync` mirror, HTTP log upload, `activeSyncExportDirectory`, `importAllDeviceData`, `setOption` (only `setAsciiMode` exists), the `.return` dead branch (a long-gone `KeyAction.return` path that produced no proxy output — the current `.return` case is alive and emits a newline / commits), or an auto-sync scheduler. The keyboard owns WebDAV configuration, connectivity testing, credential deletion and manual sync.
-- **Do not** hand-edit qvshuo-sourced RIME data files.
-- Keep `RimeContext` backend-agnostic: URL/session/WebDAV specifics live in `Sync`, field/IME UI state in `InputState` (KeyboardUI), engine state in `RimeContext` (RimeEngine).
-- Keep layout/grid math pure and unit-tested; avoid hard-coded widths.
-- Keyboard code runs inside the extension's tight memory budget: no full deploys, no heavy caches, no reading every candidate on the keyboard root's body.
-- No code comments unless they record a non-obvious why (the AGENTS gotchas above are the home for architecture-level explanations).
-
-## License
-
-App source: MIT (see `LICENSE`). Bundled binaries and RIME data carry their own licenses — see `THIRD-PARTY-NOTICES.md`.
+README edits correct facts or remove clutter; no expanded marketing, gesture tables or usage sections. Source is MIT; bundled binaries/data retain their licenses in THIRD-PARTY-NOTICES.md. Evaluating GPL upstream code does not authorize copying it into MIT source.

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import Models
-import Sync
+import KeyboardModels
+import RimeSync
 
 @MainActor
 @Observable
@@ -24,7 +24,7 @@ final class SyncSettingsModel {
             case .username: "WebDAV 用户名"
             case .password: "WebDAV 密码"
             case .path: "Rime_Sync"
-            case .installationID: "Quill"
+            case .installationID: "iPhone"
             }
         }
     }
@@ -74,7 +74,6 @@ final class SyncSettingsModel {
         }
     }
 
-    /// 配置编辑只操作草稿，绝不调用宿主代理或 RIME。
     func consume(_ action: KeyAction) {
         guard let field = editingField, !isTesting else { return }
         switch action {

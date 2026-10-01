@@ -1,5 +1,5 @@
 import Foundation
-import Models
+import KeyboardModels
 import Synchronization
 
 public enum LayoutParserError: Error, LocalizedError {
@@ -17,8 +17,7 @@ public enum LayoutParserError: Error, LocalizedError {
 }
 
 public enum LayoutParser {
-    /// 布局不可变，进程内只解析一次。`KeyboardViewModel` 会因字段切换/回车键类型
-    /// 变化而重建，缓存避免在每次重建时重复解码同一批 JSON。
+    /// 布局不可变，进程内只解码一次，控制器重建时复用。
     private static let cache = Mutex<[String: LayoutDescriptor]>([:])
 
     public static func load(_ name: String, from bundle: Bundle? = nil) throws -> LayoutDescriptor {

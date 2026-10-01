@@ -1,154 +1,93 @@
-# 输入法对比：Quill × Squirrel × Hamster × fcitx5-ios
+# 实现评估：RIME for iOS、fcitx5-ios、Squirrel
 
-> 基准 = Quill（本仓库）。对比对象：父目录同级 clone 的 `squirrel`（librime 上游 macOS 版）、`Hamster`（iOS）、`fcitx5-ios`（iOS）。
-> 本文记录四个项目在「功能面」与「实现面」的可比事实，供 Quill 后续取舍参考。
+评估日期：2026-10-01。结论：保留直接 librime、预构建数据和精简键盘的架构。最值得借鉴的是输入框身份隔离、候选增量读取、可见视图生命周期及可复现的内存诊断。多引擎、撤销/重做、运行时部署应等明确需求出现后再引入。
 
-## 0. 项目定位速览
+## 样本与复现
 
-| | Quill | Squirrel | Hamster | fcitx5-ios |
-|---|---|---|---|---|
-| 平台 | iOS（App + 键盘扩展） | macOS（输入法进程，无扩展概念） | iOS（App + 键盘扩展） | iOS（App + 多个键盘扩展） |
-| 引擎 | librime（预编译 xcframework） | librime（dylib + 源码构建） | librime（RimeKit 包封装） | fcitx5 核心（RIME 是其一插件引擎） |
-| 前端 | SwiftUI 全自研 | AppKit / InputMethodKit | UIKit（KeyboardKit fork）/ SwiftUI | SwiftUI（uipanel） |
-| 架构形态 | 3 个 SwiftPM 包 + C 桥 | 单 target + Makefile + 打包 | ~6 个 SwiftPM 包 | CMake + 静态库 + 共享库 |
-| 方案模型 | 锁死 `luna_pinyin` 单方案 | 方案交给 librime | 多方案可切换 | 多引擎（pinyin/rime/mozc…） |
-| 特点 | 最小精简、无部署栈、WebDAV 手动同步 | 经典桌面 RIME、真部署、明文配置 | 功能最多：九宫/T9/云端/配色全上 | 复刻整个 fcitx5 框架，可扩展引擎 |
-
-**一句话**:Quill = iOS 最小 RIME 复刻；Squirrel = macOS 桌面标杆、零虚拟键盘；Hamster = iOS 功能最全 RIME；fcitx5-ios = 把整套 fcitx5 移植到 iOS，RIME 只是插件之一。
-
----
-
-## 1. 引擎桥接与内存模型
-
-### Quill
-- `RimeEngine` 直接链接 librime.a（Frameworks 内 xcframework），`RimeEngineC` 暴露 `_stdbool` 风味 C API；Swift 侧 `RimeContext`（`@Observable` 单例）按 Lifecycle / Input / Directories / Logging 拆分扩展文件。
-- `RimeTraits` / `RimeContext` / `RimeCommit` 都要求手动写 `data_size`，否则 `RimeGetContext`/`RimeGetCommit` 返回 false。
-- 同步阻塞调用：librime `RimeProcessKey` → `RimeGetCommit`（一次性，`pollCommit()` 消费）→ `RimeGetContext`。
-- 内存极敏感（iOS 扩展 `~77MB` 上限）→ **禁 deploy**，数据预构建（见 §3）。
-
-### Squirrel（macOS）
-- 同样走 `rime_get_api_stdbool().pointee`，并有 `rimeStructInit()`（清零 + 设 `data_size`）——与 Quill 完全同源的技术。
-- 进程即输入法 App（InputMethodKit），可任意 deploy，无内存/沙盒限制。
-- 蓝图：主线程事件循环，librime 自身在运行时内部有线程池（同步调用掩盖了它）。
-
-### Hamster
-- 用独立的 SwiftPM 包 `RimeKit`：`Rime.shared` 单例，封装 `start(sharedSupportDir:userDataDir:maintenance:fullCheck:)`。
-- `RimeContext`（@StateObject/@Published 分发）：Combine + `rimeContext` / `suggestions` / `optionState`；`userInputKey` 用 Subject 驱动。
-- 部署区分「主 App 内存富余」与「扩展省内存」两个角色，见 §3。
-
-### fcitx5-ios
-- 不直接用 librime——把 **fcitx5 核心（C++20）** 搬运过来，`runtime_main.cpp` 跑 `fcitx::Instance`，且跑在**独立线程** + 「事件调度 → SwiftUI」桥。
-- Swift ↔ C++ 走 protocol：`key/commitString/setPreedit/…`；RIME 作为 fcitx5 的插件（`fcitx-rime`）被 `libime` 静态链入。
-
-**要点**：Quill / Squirrel 同步直调 librime；Hamster 同步调用但用 Combine 分发；fcitx5-ios 是真正的异步多线程 + 事件桥——这是它和其余三者架构代差所在。
-
----
-
-## 2. 输入链路与候选输出
-
-### 前端截获方式
-| 项目 | 渲染 | 载体 |
+| 项目 | 实际检查的版本 | 获取结果 |
 |---|---|---|
-| Quill | SwiftUI（键盘视图） | 键盘扩展，直接 `textDocumentProxy` |
-| Squirrel | 候选窗口（面板） + 无虚拟键盘 | 物理键盘 → IMK，`client.setMarkedText` |
-| Hamster | SwiftUI（Key/九键） | 扩展，`textDocumentProxy` + `setMarkedText` |
-| fcitx5-ios | SwiftUI（uipanel） | 扩展，`UITextDocumentProxy` + `forwardKey` |
+| RIME for iOS | 本轮 2.0.0（16），基于本地 main `935b8ed` | 更名、注释和测试收敛后的本仓库源码；librime 仍为 1.16.0 |
+| fcitx5-ios | master `840a91501d3cfeb5227c3962dc8f2906f02db0bc`，提交时间 2026-10-01 06:21（北京时间） | 对现有干净克隆执行 git pull --ff-only；从 `3084806` 更新。获取固定版本的 fcitx5、fcitx5-rime、libime 和键盘布局子模块 |
+| Squirrel | 最新正式 release **1.1.2**，发布于 2026-01-14；源码 `876adebaf2f612951dcdca8a591de65401222b9a` | GitHub releases/latest API 确認正式版本；安装包已下载，原有源码及 librime/plum/Sparkle 的固定版本已核对 |
 
-### 细节差异
-- **Squirrel**：键盘事件转 X11 键码发给 librime；预编辑 inline 或候选窗口双模；支持 `chord typing`（多重修饰键组合）等 librime 功能。仅桌面端。
-- **Hamster**：多了「成对符号自动插入闭合」「删除成对符号」「光标居中」等输入代理特设逻辑；T9 九键有自己的拼音映射 trie（`replaceDyadicPinyin`）。
-- **fcitx5-ios**：`forwardKey` 处理候选行的上下行/Home/End/退格等整行操作，还内置「滑动退格删除」「long press 连续删除」。
+Squirrel 的浮动 nightly 标签不作为正式版本基线。下载文件：父目录 `reference-downloads/squirrel-1.1.2/Squirrel-1.1.2.pkg`，25,498,033 字节，SHA-256：
 
-这类「in-extension 文本操作」Quill 目前几乎没有，只做基础 insert/delete。
+```
+614746013212937623d5bbab9901e9c43d1ec937aa32307d6b6092a05e308287
+```
 
----
+Squirrel 的 librime pin 是 `a251145d`（1.16.0），与本项目一致；本轮无需更换引擎二进制。Squirrel 的已有 Sparkle 工作区修改保留，没有为了比较覆盖它。fcitx5-ios 其余多引擎/打包子模块未全部下载或构建，源码判断以已检查的前端、补丁和相关引擎为界。
 
-## 3. 部署 / 数据生命周期
+版本依据：[fcitx5-ios 固定提交](https://github.com/fcitx-contrib/fcitx5-ios/commit/840a91501d3cfeb5227c3962dc8f2906f02db0bc)、[Squirrel 正式 release](https://github.com/rime/squirrel/releases/tag/1.1.2)、[Squirrel 子模块定义](https://github.com/rime/squirrel/blob/1.1.2/.gitmodules)。
 
-| | Quill | Squirrel | Hamster | fcitx5-ios |
-|---|---|---|---|---|
-| 部署方式 | **禁部署**：`prebuilt_data_dir=SharedSupport/build`（macOS 上 rime_deployer 预先出 .bin），`start() = setup→initialize` | **安装时部署**：打包脚本内置 `rime_deploy` 首次生成数据 | **主 App 部署**：`deployment(configuration:)` 在 App（内存富余）维护 `fullCheck`，把数据copy到 AppGroup | **主 App 部署**：键盘扩展启动时不做 maintainance；改动 schema 后跳回主 App 触发 |
-| 语言数据来源 | 构建期，脚本 `scripts/build-prebuilt-data.sh` | 源码构建 + `data/` 提交 | App bundle 内置数据 + 用户词典 | bundle 内 rime-data + 用户配置下拉 |
-| 用户词库 | AppGroup/Rime（若签名团队配了 groups）或各自私有（无 AppGroup 互不相通） | `~/Library/Rime` | AppGroup | AppGroup |
+## 功能与实现对照
 
-**Quill 独有**：因为 iOS 扩展 `~77MB` 内存红线 `deploy` 会被 kill，只能「零生成」读预建 `.bin`。三方都选择了「主 App 内存里跑部署」，Quill 是唯一「运行时零生成」的。
+| 方面 | RIME for iOS | fcitx5-ios 最新代码 | Squirrel 1.1.2 |
+|---|---|---|---|
+| 平台与范围 | iOS 26+，单 RIME 键盘 | iOS 16.3+，多引擎、多扩展 | macOS，物理键盘 + InputMethodKit |
+| 引擎链路 | Swift 直接调用 librime；递归锁保护，维护另有串行队列 | fcitx C++ 事件调度器 → iOS frontend → Swift 主线程 | 输入事件转换 X11 键码后调用 librime |
+| 输入框隔离 | 控制器/会话归属保护；宿主类型变化时更新模型 | 回调携带 program + documentIdentifier，主线程执行前核对当前输入框 | IMK client 与对应 session 绑定，按应用读取选项 |
+| 大写混合预输入 | 自有字面组合支持全角标点；Space/Return/选候选整段提交 | 通用虚拟键修饰状态和引擎输入路径 | 主要由 librime ascii_composer 及配置决定 |
+| 提交与宿主光标 | 清除 marked text → unmark → 一次插入合并文本 | commitString 直接插入；另有 Unicode 周围文本删除及光标操作 | IMK client.insertText，桌面标记文本和客户端 API |
+| 候选 | 当前页 9 个，展开补至 77 个；惰性视图、字体宽度缓存 | 横向/网格临近末尾读取下一批，区分 bulk 和分页，支持候选动作 | 可配置横/竖/线性浮动面板，分页、注释和内联预编辑 |
+| 编辑能力 | 连续退格、双空格句号、基础切换 | 滑动删除、光标移动、撤销/重做、周围文本、数字键盘 | 实体修饰键、和弦输入、桌面应用选项 |
+| 生命周期 | 进程引擎共享，控制器归属检查；日志轮询随页面取消 | 可见时装载 SwiftUI 树，隐藏时拆卸；文档轮询仅可见时运行 | macOS 输入法进程，IMK 激活/停用管理 |
+| 数据部署 | 构建期生成，扩展启动不部署 | RIME 补丁不在键盘启动部署；部署动作转交主应用 | 支持运行时维护/部署、方案与配置更新 |
+| 数据互通 | 可选 App Group；无权限时私有容器，WebDAV 手动传用户词库/短语 | App Group；无权限时通过主应用本地服务与键盘同步配置，支持归档导入/导出 | librime 用户数据同步到本地 sync 目录；前端不内置 WebDAV 客户端 |
+| 诊断 | 事件与 native 日志有界、约 1 MiB 导出，不记录按键 | 文档/进程诊断与可复现的内存调查；stderr 在启动截断，进程内继续追加 | native 日志及桌面配置/维护反馈 |
+| 测试 | 真引擎/真 UITextView + 可注入同步、纯排版和日志边界 | Swift 撤销/重做单元测试及 Appium 端到端入口 | 本次以正式版前端/引擎源码为准，未运行桌面自动化 |
 
----
+实现依据：[fcitx 宿主控制器](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/keyboard/KeyboardViewController.swift)、[输入框校验桥](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/iosfrontend/iosfrontend.swift)、[候选条](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/uipanel/CandidateBar.swift)、[RIME iOS 补丁](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/patches/rime.patch)、[数据管理](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/src/DataManager.swift)、[Squirrel 输入控制器](https://github.com/rime/squirrel/blob/1.1.2/sources/SquirrelInputController.swift)、[Squirrel 维护/同步](https://github.com/rime/squirrel/blob/1.1.2/sources/SquirrelApplicationDelegate.swift)。
 
-## 4. 深浅色与键盘配色
+## 值得借鉴的部分
 
-### 深浅色决策（本次改动主题）
-| 项目 | 机制 | 复杂度 |
-|---|---|---|
-| Quill（现） | `@Environment(\.colorScheme)` 纯 SwiftUI，controller 不再解析 dark/light；之前 `resolvedIsDark()` 三级兜底（keyboardAppearance→trait→UIScreen）已移除 | 最简 |
-| Squirrel | `NSApp.effectiveAppearance`（跟随系统），面板配色由 scheme 提供 | 低（桌面天然同步） |
-| Hamster | `KeyboardContext.hasDarkColorScheme` = trait；`sync(with:)` 更新，并兼容「host dark 但扩展仍 light」的 iOS bug 场景 | 中 |
-| fcitx5-ios | 同 Quill：`.dark ? 深版 : 亮版`，view 内 `@Environment(\.colorScheme)` 自动跟随 | 最简 |
+### 优先：输入框身份与可见期检查
 
-### 键帽配色
-- **Quill**：键帽纯色块，`Theme` 提供 base colors；深色 = 半透明叠加（alpha 由 `overlay(base:target:)` 从背板常量与目标灰反解），贴合 fcitx5-ios 风格；按压单一 `pressedKeyBackground` tone。confirm 键 `#007AFF`；候选选中 pill。无渐变/阴影/描边。
-- **Squirrel**：桌面无「键帽」，候选面板由用户挑 `color_scheme` 预存（原生支持 `preset_color_schemes`）。
-- **Hamster**：`buttonBackgroundColorForStyle`（样式态/按下态区分）+ 自定义主题、键帽字体颜色、圆角。
-- **fcitx5-ios**：key cap 用「深浅色两套 + 半透明叠加 blend」参数，高亮 `#007AFF`。有 `blend` 帮助函数。
+fcitx5-ios 不只确认控制器仍存在，还核对异步输出属于哪一个 documentIdentifier；隐藏期间停止接收引擎命令。这样即使同一个控制器快速切换 TextField，也不会把延迟输出写入新字段。
 
----
+本项目多数按键处理是同步调用，没有同等规模的异步回调链，收益主要在启动、维护结束及未来异步引擎输出。当前会话 owner 保护的是“哪个控制器”，不等价于“哪个输入框”。建议下一轮为跨异步边界的宿主输出建立文档/激活期令牌，字段身份变化时按明确规则清理组合。需要真宿主验证同类型字段切换、快速离开/返回以及维护中切换。无需为此移植整个 fcitx 调度器。
 
-## 5. 候选栏与用户界面
+### 优先：候选增量读取
 
-| 项目 | 候选条 | 展开 |
-|---|---|---|
-| Quill | 横向候选条 panel（>9 候选分页） | 点击 Chevron → 全屏网格（对齐首项）+ 再次点击收起 |
-| Squirrel | 浮动候选窗口（自绘） | 窗口内翻页 |
-| Hamster | 水平工具栏 候选条 | 「…」/滑动翻页（`CandidatePagingView`） |
-| fcitx5-ios | 横向 candidate bar（懒加载） | 「expand」+ 页面网格 + 备注（click/backspace 行操作） |
+fcitx5-ios 在横向滚动和网格接近末尾时才请求下一批。本项目已经有 LazyHStack/LazyVStack，但数据层展开时只取固定 77 个；“惰性视图”与“候选按需读取”是两个问题。
 
-Quill 的展开网格是对 Hamster/fcitx5 的仿：「chevron 从候选栏挑出全部候选进入大网格」。
+建议保留现有纯排版，增加带组合代次的 load-more 接口和有界候选窗口，保证候选列表改变时取消旧请求，点击索引仍对应原生全局索引。验收包括越过 77 个、输入中切换组合、展开/收起、高亮/选词和长词测量缓存。复杂度中等，能直接解除固定候选上限；不要直接替换成上游宽度比例常量。
 
----
+### 优先：内存测量方法
 
-## 6. 同步 / 云
+fcitx5-ios 9 月调查区分 live heap、physical footprint、file-backed mapping 和初次预测加载；通过单变量恢复定位出重复 @Published 等值赋值导致的周期增长。其 libime Apple 补丁将 KenLM 加载改为 LAZY，真机全模型测试报告冷启动 footprint 约减少 33 MiB。
 
-| 项目 | 方式 | 手动/自动 |
-|---|---|---|
-| Quill | WebDAV（键盘同步页触发），使用独立临时目录，上传各设备目录 | **手动**（同步页按钮） |
-| Squirrel | `rime_sync_user_data` / 可同步 `~/Library/Rime/sync` / WebDAV 用户方案 | 自动或手动（`Sync` 菜单） |
-| Hamster | iCloud（CloudKit）+ `syncDirDictionary` | 自动 |
-| fcitx5-ios | AppGroup + 局域网 HTTP（`32489` / Swifter）+ magic text | （用户可按 mail 手动） |
+这项数值属于 **libime/fcitx5-ios 的特定模型、设备和测试序列**。RIME 的词典已经使用 mapped_file；本项目还加载 octagram，不能据此推导本项目也会减少 33 MiB。应该先对本项目 Release 真机做冷启动、首次候选、100 次提交、10 分钟静置与多宿主切换的相同采样；确认具体堆分配后才改模型加载。本项目使用 Observation 的状态，不应直接套用 @Published 的内部行为结论。
 
-Quill 是唯一「无云、需用户主动网络」的。
+方法依据：[调查流程](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/docs/memory.md)、[9 月实测记录](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/docs/memory-investigations/chinese-2026-09.md)、[libime 补丁](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/patches/libime.patch)、[librime 映射文件实现](https://github.com/rime/librime/blob/1.16.0/src/rime/dict/mapped_file.cc)。
 
----
+### 有测量后再做：隐藏时释放 SwiftUI 树
 
-## 7. 交互与手势
+fcitx5-ios 最新控制器在 viewWillDisappear 拆卸 hostingController，避免 UIKit 保留多个非可见控制器时各自保留 SwiftUI 树。本项目目前将树保留至控制器销毁。
 
-- **Quill**：tap、空格双击句号、shift 双击锁 Caps（0.35s）、键盘预览 bubble、按压色。
-- **Hamster**：完整 Key 手势（double tap / long press / repeat / drag / swipe 帧阈值）。
-- **fcitx5-ios**：`KeyGesture` tap / double / long / swipe-up（候选）/ swipe-down / slide（退格 repeat）等整套。
+这是有价值的优化方向，但本项目将凭据草稿、编辑状态和按压状态放在视图树里；直接拆卸会丢失草稿，也可能因导出覆盖引发不必要重建。应先测多宿主隐藏控制器的驻留，再把需要保留的草稿移至独立生命周期、处理分享覆盖，最后比较重建延迟与内存收益。不能只删视图就称为无风险优化。
 
-Quill 实现 bubble + tap 按压和长按连续退格，没有 drag/swipe。
+### 保留：Squirrel 的引擎语义和一次性提交纪律
 
----
+Squirrel 先消费 RimeCommit，再读取并展示上下文；未处理键交回客户端，模式切换规则由引擎配置控制。本项目应继续以这个顺序与原生 librime 作为语义基线。
 
-## 8. 工程 / 调试对比
+“按 Shift 后全部字符预输入，Space 确认”是本项目明确产品规则。Squirrel 自身并未定义一份与该规则完全相同的全角符号缓冲；其行为受 schema/ascii_composer 配置影响。保留本项目 Unicode 字面组合和真实宿主的单次插入修复，不用桌面 client.insertText 替换 iOS marked-text 提交路径。
 
-| | 构建方式 | 包管理 | 测试 | 数据生成 |
-|---|---|---|---|---|
-| Quill | xcodebuild + SwiftPM | xcodegen project.yml | swift-testing / XCTest（候选网格、行布局、主题已测） | scripts/build-prebuilt-data.sh |
-| Squirrel | Xcode + Makefile | — | XCTest 少量 | 构建脚本内 deploy |
-| Hamster | 6 个包 + Xcode | SPM | 少量 | `InputSchemaBuild.sh` |
-| fcitx5-ios | CMake + ios-cmake + 子模块 | C++ 子模块 | — | install-deps + deploy |
+## 暂缓或不采纳
 
-Quill 的特点是 librime 用**预编译 xcframework**（`Frameworks/`），其余三家都源码/子模块 build。
+| 方案 | 评估 |
+|---|---|
+| 整套 fcitx 核心、多引擎桥 | 对单 RIME 产品收益有限，会引入第二套生命周期/事件状态和构建链；异步线程并非自动更快 |
+| 撤销/重做和完整编辑工具栏 | 上游需要文档轮询、行状态历史、Unicode range 计算和切换保护；UITextDocumentProxy 只暴露部分上下文，复杂度显著。出现明确需求后独立设计、限制历史并验证隐私/内存 |
+| 主应用动态部署及方案导入 | 技术上可借鉴“重工作放主应用”，但无 App Group 自签基线还要跨进程交付编译结果；不能简单搬桌面部署，更不能在扩展中强制部署 |
+| 通过本地 HTTP/magic text 同步主应用配置 | 上游解决多引擎配置交付问题；本项目当前在键盘完成配置，暂无这条链路需求。若未来支持方案导入，再单独评估 |
+| Squirrel 的主题、应用选项、和弦输入 | 桌面候选窗口/IMK 能力不等同于 iOS 虚拟键盘；不宜直接移植 |
+| 照搬上游诊断/日志全文 | 文档诊断可能涉及周围文本；本项目仍保持不记录按键/密码、有界日志。不为借鉴诊断而扩大采集范围 |
 
----
+fcitx5-ios 源码为 GPLv3，本项目应用源码为 MIT。可学习设计和测量方法；若复制实现，需要单独处理许可兼容性。本轮没有复制上游业务实现，也未将其作为新运行依赖。[上游 LICENSE](https://github.com/fcitx-contrib/fcitx5-ios/blob/840a91501d3cfeb5227c3962dc8f2906f02db0bc/LICENSE)
 
-## 9. 结论 / 对我们可借鉴
+## 本轮实际采用与边界
 
-1. **主 App 做真部署 + AppGroup 数据共享**（Hamster / fcitx5 共同模式）：规避扩展内存限制。Quill 若未来真机放宽，可做成「主 App Deploy ⇒ 预交付 build/」外推。
-2. **AppGroup 数据互通**：Quill 无 AppGroup 时键盘与 App 各自私有、互不相通，这是痛点。
-3. **可扩展配置模式**：fcitx5-ios 的 uipanel、Hamster 的配色/字体都可作为「若 Quill 要开放主题时」的 API 蓝本。
-4. **候选懒加载 + 滑动**：Quill 展开当前全量渲染，fcitx5-ios list 用懒加载需量化热点。
+实际采用：明确职责命名，修正把单元测试称为 UITests 的工程标签，数据驱动地合并重复测试，文档区分引擎维护/网络同步、私有容器/App Group 和模拟器/真机证据；保留真实引擎、光标、并发与失败路径回归。
 
----
-
-*2026-08 Quill 仓库内核对。*
+输入框令牌、增量候选及视图拆卸是后续建议，本轮没有暗中增加这些功能。评估基于固定源码与上游报告；未在本机完整构建或跑性能 A/B 对比三者，也未将上游性能数字描述为本项目实测。键盘扩展的历史 ~77 MiB 限制是设备/OS 观测，实际预算需要真机测量。

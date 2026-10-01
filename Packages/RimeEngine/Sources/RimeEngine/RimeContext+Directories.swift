@@ -2,29 +2,18 @@ import Foundation
 import Synchronization
 
 extension RimeContext {
-    // MARK: - Sync (安装信息 / 用户词典同步)
-
-    /// 本设备的安装 ID，即 `sync/<installation_id>/` 子目录名。引擎层后端无关，
-    /// 由同步层按保存的凭据设置。多处读写，用锁保护。
-    private static let installationIDStorage = Mutex<String>("Quill")
+    private static let installationIDStorage = Mutex<String>("iPhone")
     public static var installationID: String {
         get { installationIDStorage.withLock { $0 } }
         set { installationIDStorage.withLock { $0 = newValue } }
     }
 
-    /// librime 同步目录（`user_data_dir/sync`，或 installation.yaml 里配置的 sync_dir）。
-    /// 同步期间 installation.yaml 的 sync_dir 会被改写为暂存目录，本目录仅作启动时默认值。
-    // MARK: - Sync (暂存目录覆盖)
-
-    /// 同步期间的暂存目录覆盖；结束后清空。多处读写，用锁保护。
     private static let stagingDirectoryOverrideStorage = Mutex<URL?>(nil)
     private static var stagingDirectoryOverride: URL? {
         get { stagingDirectoryOverrideStorage.withLock { $0 } }
         set { stagingDirectoryOverrideStorage.withLock { $0 = newValue } }
     }
 
-    /// 让 installation.yaml 的 `sync_dir` 指向同步暂存目录，并记录导出目录。
-    /// 同步完成后调用 `clearStagingDirectory()` 复位。
     public func setStagingDirectory(_ stagingDir: URL) throws {
         try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
         try Self.installationFileLock.withLock {
@@ -40,22 +29,19 @@ extension RimeContext {
         }
     }
 
-    /// 确保 installation.yaml 的 installation_id / backup_config_files / sync_dir 就绪。
     func ensureInstallationInfo() throws {
         try Self.installationFileLock.withLock {
-            guard let dir = Paths.userDataDirectory else { throw RimeError.missingDirectory }
-            let root = Self.stagingDirectoryOverride ?? Paths.syncDirectory ?? dir
+            guard let dir = RimePaths.userDataDirectory else { throw RimeError.missingDirectory }
+            let root = Self.stagingDirectoryOverride ?? RimePaths.syncDirectory ?? dir
             try rewriteInstallationInfo(syncDir: root)
         }
     }
 
-    /// 写入 installation.yaml：`installation_id` + `backup_config_files` + `sync_dir`。
-    /// 读改写全程持锁：`ensureInstallationInfo`（启动任务）与 `setStagingDirectory`
-    /// （同步队列）可能交错，无锁会丢更新（如暂存覆盖被启动默认值冲掉）。
+    /// 启动与同步可能交错，installation.yaml 的读改写须全程持锁。
     private static let installationFileLock = NSRecursiveLock()
 
     private func rewriteInstallationInfo(syncDir: URL) throws {
-        guard let dir = Paths.userDataDirectory else { throw RimeError.missingDirectory }
+        guard let dir = RimePaths.userDataDirectory else { throw RimeError.missingDirectory }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: syncDir, withIntermediateDirectories: true)
 
@@ -82,11 +68,7 @@ extension RimeContext {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// 跑一次 librime 同步：把本机用户词典导出到同步暂存目录的
-    /// `<installation_id>/` 下，并合并暂存目录里其他设备的 `*.userdb.txt`。
-    /// 必须先 `setStagingDirectory(_:)` 设置暂存目录，否则抛 `missingDirectory`。
-    /// `RimeSyncUserData` 异步执行，须 `join_maintenance_thread` 等待完成。
-    /// 持锁执行：librime 非线程安全，若与输入热路径（processKey）并发会崩。
+    /// 先设置暂存目录；须等待维护线程退出才能恢复输入或删除暂存文件。
     @discardableResult
     public func syncUserData() throws -> URL {
         lock.lock()

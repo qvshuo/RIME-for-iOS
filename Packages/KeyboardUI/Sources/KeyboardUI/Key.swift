@@ -1,7 +1,6 @@
 import SwiftUI
-import Models
+import KeyboardModels
 
-/// 纯色键帽，按压时切换填充色；字符键显示预览气泡。
 public struct Key: View {
     let descriptor: KeyDescriptor
     let theme: Theme
@@ -15,7 +14,6 @@ public struct Key: View {
         descriptor.action.isBackspace
     }
 
-    /// 仅字符键显示按压气泡；数字和符号布局在解析时同样使用 `.character`。
     private var previewText: String? {
         guard case .character = descriptor.action else { return nil }
         return descriptor.label
@@ -55,8 +53,7 @@ public struct Key: View {
         .zIndex(isPressed ? 1 : 0)
     }
 
-    /// 退格支持长按连打（0.5s 后每 0.1s 重复）。用 UIKit 触摸回调驱动起停：
-    /// SwiftUI DragGesture 在键盘扩展里松手不可靠，系统手势中断时不走 onEnded。
+    /// SwiftUI 手势中断可能不回调 onEnded，退格计时由 UIKit 触摸驱动。
     private var repeatableKeyBody: some View {
         keyLabel
             .foregroundStyle(foregroundColor)
@@ -134,7 +131,6 @@ public struct Key: View {
         }
     }
 
-    /// shift 处于激活（一次大写或大写锁定）时显示实心上箭头，与原生输入法一致。
     private var shiftImageName: String {
         switch shiftState {
         case .uppercaseOnce, .uppercaseLocked:

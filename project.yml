@@ -1,6 +1,6 @@
-name: Quill
+name: RIMEForiOS
 options:
-  bundleIdPrefix: art.anjing.quill
+  bundleIdPrefix: art.anjing.rimeios
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -11,19 +11,19 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     # 版本号唯一来源：两个 target 的 Info.plist 引用 $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION)。
-    MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "15"
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "16"
 packages:
   RimeEngine:
     path: Packages/RimeEngine
-  Models:
-    path: Packages/Models
+  KeyboardModels:
+    path: Packages/KeyboardModels
   KeyboardUI:
     path: Packages/KeyboardUI
-  Sync:
-    path: Packages/Sync
+  RimeSync:
+    path: Packages/RimeSync
 targets:
-  Quill:
+  RIMEForiOS:
     type: application
     platform: iOS
     sources:
@@ -38,8 +38,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Quill 输入法
-        # 版本号经 build settings 注入（唯一来源见 settings.base 的 MARKETING_VERSION）。
+        CFBundleDisplayName: RIME for iOS
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
@@ -50,25 +49,25 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     entitlements:
-      path: App/Quill.entitlements
+      path: App/App.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.art.anjing.quill
+          - group.art.anjing.rimeios
     dependencies:
-      - target: QuillKeyboard
+      - target: RIMEKeyboard
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.quill
+        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.rimeios
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
-  QuillKeyboard:
+  RIMEKeyboard:
     type: app-extension
     platform: iOS
     sources:
-      - path: QuillKeyboard
+      - path: KeyboardExtension
     info:
-      path: QuillKeyboard/Info.plist
+      path: KeyboardExtension/Info.plist
       properties:
-        CFBundleDisplayName: Quill 输入法
+        CFBundleDisplayName: RIME for iOS
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -78,64 +77,64 @@ targets:
             PrimaryLanguage: zh-Hans
             RequestsOpenAccess: true
           NSExtensionPointIdentifier: com.apple.keyboard-service
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).InputController
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardInputController
     entitlements:
-      path: QuillKeyboard/QuillKeyboard.entitlements
+      path: KeyboardExtension/Keyboard.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.art.anjing.quill
+          - group.art.anjing.rimeios
         com.apple.security.network.client: true
     dependencies:
       - package: RimeEngine
         product: RimeEngine
-      - package: Models
-        product: Models
+      - package: KeyboardModels
+        product: KeyboardModels
       - package: KeyboardUI
         product: KeyboardUI
-      - package: Sync
-        product: Sync
+      - package: RimeSync
+        product: RimeSync
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.quill.keyboard
-  QuillKeyboardUITests:
+        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.rimeios.keyboard
+  RIMECoreTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: QuillKeyboardUITests
+      - path: Tests
     dependencies:
       - package: KeyboardUI
         product: KeyboardUI
       - package: RimeEngine
         product: RimeEngine
-      - package: Models
-        product: Models
-      - package: Sync
-        product: Sync
+      - package: KeyboardModels
+        product: KeyboardModels
+      - package: RimeSync
+        product: RimeSync
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.quill.keyboarduitests
+        PRODUCT_BUNDLE_IDENTIFIER: art.anjing.rimeios.coretests
         GENERATE_INFOPLIST_FILE: true
 schemes:
-  Quill:
+  RIMEForiOS:
     build:
       targets:
-        Quill: all
+        RIMEForiOS: all
     run:
       config: Debug
-      target: Quill
+      target: RIMEForiOS
     test:
       config: Debug
       targets:
-        - name: QuillKeyboardUITests
-  QuillKeyboard:
+        - name: RIMECoreTests
+  RIMEKeyboard:
     build:
       targets:
-        QuillKeyboard: all
-        Quill: all
+        RIMEKeyboard: all
+        RIMEForiOS: all
     run:
       config: Debug
-      target: Quill
+      target: RIMEForiOS
     test:
       config: Debug
       targets:
-        - name: QuillKeyboardUITests
+        - name: RIMECoreTests

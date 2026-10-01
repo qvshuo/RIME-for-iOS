@@ -1,14 +1,14 @@
 import SwiftUI
 import UIKit
-import Models
+import KeyboardModels
 import RimeEngine
 
 public struct KeyboardView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @State private var viewModel: KeyboardViewModel
+    @State private var viewModel: KeyboardInputModel
     @State private var candidatesExpanded = false
     @State private var settings = SyncSettingsModel()
-    @State private var editorModel = KeyboardViewModel()
+    @State private var editorModel = KeyboardInputModel()
     let rimeContext: RimeContext
     let inputState: InputState
     let keyboardType: UIKeyboardType
@@ -16,7 +16,6 @@ public struct KeyboardView: View {
     let onKey: (KeyAction) -> Void
     let onExportLogs: () -> Void
 
-    /// 主题跟随宿主 App 的深浅色（同 fcitx5-ios），控制器不解析、由 SwiftUI 环境自动重求值。
     private var resolvedTheme: Theme {
         colorScheme == .dark ? .dark : .light
     }
@@ -35,7 +34,7 @@ public struct KeyboardView: View {
         self.returnKeyType = returnKeyType
         self.onKey = onKey
         self.onExportLogs = onExportLogs
-        self._viewModel = State(initialValue: KeyboardViewModel())
+        self._viewModel = State(initialValue: KeyboardInputModel())
     }
 
     public var body: some View {
@@ -145,8 +144,8 @@ public struct KeyboardView: View {
         onKey(.selectCandidate(index))
     }
 
-    /// 键区只依赖低频状态（布局/语言/大小写）；preedit 等高频变化收窄到行视图。
-    private func keyArea(theme: Theme, in totalWidth: CGFloat, model: KeyboardViewModel, editing: Bool = false) -> some View {
+    /// 高频组合状态由行视图观察，避免每次按键重建整个键区。
+    private func keyArea(theme: Theme, in totalWidth: CGFloat, model: KeyboardInputModel, editing: Bool = false) -> some View {
         VStack(spacing: theme.rowSpacing) {
             if model.currentRows.isEmpty {
                 // 布局加载失败兜底：显示错误而非空白键盘。
@@ -264,7 +263,6 @@ private struct PanelHeader: View {
     }
 }
 
-/// 折叠候选栏：在自身 body 观察候选，刷新只重求值本视图。
 private struct CandidatesBar: View {
     let rimeContext: RimeContext
     let inputState: InputState
@@ -292,8 +290,7 @@ private struct CandidatesBar: View {
     }
 }
 
-/// 单行键盘行视图：仅含回车键的行读取 preedit / hasInputText，
-/// 组合期间只重求值这一行。
+/// 只有含回车键的行观察 preedit 和 hasInputText。
 private struct KeyboardRowView: View {
     let row: RowDescriptor
     let theme: Theme
@@ -311,7 +308,7 @@ private struct KeyboardRowView: View {
         let hasPreedit = hasReturn && !editingCredentials ? !rimeContext.preedit.isEmpty : false
         let highlightReturn = hasReturn ? (!hasPreedit && (editingCredentials || inputState.hasInputText)) : false
         let effectiveReturnLabel = hasReturn
-            ? KeyboardViewModel.effectiveReturnLabel(hasPreedit: hasPreedit, hostLabel: returnKeyLabel)
+            ? KeyboardInputModel.effectiveReturnLabel(hasPreedit: hasPreedit, hostLabel: returnKeyLabel)
             : nil
 
         let layout = RowLayoutMath.layout(RowLayoutParameters(
@@ -355,8 +352,6 @@ private struct KeyboardRowView: View {
         .padding(.horizontal, layout.sideInset)
     }
 
-    /// 回车键的动态文案/高亮：有 preedit 显示「⏎」，否则显示宿主文案；
-    /// 无 preedit 且输入框有文本时用 `.confirm` 蓝色高亮。其余键原样返回。
     private func effectiveDescriptor(
         for key: KeyDescriptor,
         hasReturn: Bool,
@@ -384,8 +379,6 @@ private struct SyncToastOverlay: View {
     }
 }
 
-/// 同步 toast：候选栏顶部居中的悬浮胶囊。`started` 持续到同步结束被替换，
-/// 收起时长由进程级同步状态管理；纯文本无交互，不挡点击。
 private struct SyncToastView: View {
     let toast: SyncToast
     let theme: Theme
@@ -405,8 +398,6 @@ private struct SyncToastView: View {
     }
 }
 
-/// 展开态候选网格：按文本自然宽度分行，首行与折叠候选栏垂直对齐。
-/// 只在自身 body 观察候选。
 private struct ExpandedCandidateGrid: View {
     let rimeContext: RimeContext
     let theme: Theme
@@ -422,8 +413,7 @@ private struct ExpandedCandidateGrid: View {
             }
     }
 
-    /// 排版与单元格绘制必须基于同一份候选快照，避免 LazyVStack 惰性渲染
-    /// 读到被替换的更短数组而越界。
+    /// 惰性单元格必须使用排版时的候选快照，避免数组替换后下标越界。
     private var grid: some View {
         let barHeight = theme.candidateBarHeight + theme.keyboardPadding.top
         let gridPadding: CGFloat = theme.keyboardPadding.leading
@@ -472,7 +462,6 @@ private struct ExpandedCandidateGrid: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// 网格单元格：自然宽度、左对齐，放不下由分行逻辑换行。
     @ViewBuilder
     private func cell(index: Int, list: [Candidate], minWidth: CGFloat) -> some View {
         // 惰性渲染可能读到被替换的快照，越界下标返回空视图。

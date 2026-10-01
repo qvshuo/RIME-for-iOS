@@ -1,4 +1,4 @@
 module RimeEngineC {
-    umbrella header "Rime.h"
+    umbrella header "RimeEngineBridge.h"
     export *
 }

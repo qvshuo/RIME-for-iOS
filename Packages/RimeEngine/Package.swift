@@ -1,5 +1,4 @@
 // swift-tools-version: 6.2
-// The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
@@ -15,7 +14,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../Models"),
+        .package(path: "../KeyboardModels"),
     ],
     targets: [
         .binaryTarget(
@@ -77,7 +76,7 @@ let package = Package(
             name: "RimeEngine",
             dependencies: [
                 "RimeEngineC",
-                .product(name: "Models", package: "Models"),
+                .product(name: "KeyboardModels", package: "KeyboardModels"),
             ],
             path: "Sources/RimeEngine"
         ),

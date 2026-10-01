@@ -3,7 +3,7 @@ import Darwin
 
 final class EngineLogCapture: @unchecked Sendable {
     static let shared = EngineLogCapture()
-    private let queue = DispatchQueue(label: "art.anjing.quill.engine-log", qos: .utility)
+    private let queue = DispatchQueue(label: "art.anjing.rimeios.engine-log", qos: .utility)
     private var source: DispatchSourceRead?
     private var file: BoundedLogFile?
     private var readDescriptor: Int32 = -1

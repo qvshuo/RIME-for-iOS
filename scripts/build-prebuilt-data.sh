@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# Generate RIME prebuilt data (SharedSupport/build/*.bin) using a macOS-native
-# librime build (with rime_deployer). The resulting .bin files are bundled with
-# the app so the keyboard extension can produce candidates WITHOUT ever running
-# deploy() (which exceeds the extension's ~77MB memory limit and gets it killed
-# by Jetsam).
-#
-# Usage:
-#   ./scripts/build-prebuilt-data.sh
-#
-# Reuses librime deps sources from ../../librime/deps.
+# Generate bundled data with a host librime build, keeping deployment out of the extension.
+# Uses ../librime; run ./scripts/build-prebuilt-data.sh after schema changes.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RIME_ROOT="${RIME_ROOT:-$ROOT/../librime}"

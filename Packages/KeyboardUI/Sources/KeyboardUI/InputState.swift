@@ -1,6 +1,6 @@
 import Foundation
 import Observation
-import Models
+import KeyboardModels
 
 @MainActor
 @Observable

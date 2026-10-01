@@ -41,5 +41,4 @@ public final class BoundedLogFile: @unchecked Sendable {
             try handle.write(contentsOf: chunk)
         }
     }
-
 }

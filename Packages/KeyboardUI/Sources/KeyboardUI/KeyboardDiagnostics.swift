@@ -5,7 +5,7 @@ import Synchronization
 
 public final class KeyboardDiagnostics: Sendable {
     public static let shared = KeyboardDiagnostics(directory:
-        (Paths.logDirectory ?? URL.temporaryDirectory).appendingPathComponent("Keyboard", isDirectory: true)
+        (RimePaths.logDirectory ?? URL.temporaryDirectory).appendingPathComponent("Keyboard", isDirectory: true)
     )
 
     let directory: URL
@@ -63,7 +63,7 @@ public final class KeyboardDiagnostics: Sendable {
         }
     }
 
-    /// 生成独立快照，分享期间继续写日志不会改变导出文件。
+    /// 导出独立快照，后续日志写入不会改变分享中的文件。
     public func export() throws -> URL {
         try lock.withLock { _ in
             let sources = [logURL.appendingPathExtension("old"), logURL,
@@ -74,7 +74,7 @@ public final class KeyboardDiagnostics: Sendable {
             }.joined(separator: "\n\n")
             let folder = directory.appendingPathComponent("Export", isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let url = folder.appendingPathComponent("Quill-diagnostics.txt")
+            let url = folder.appendingPathComponent("RIMEForiOS-diagnostics.txt")
             try text.write(to: url, atomically: true, encoding: .utf8)
             return url
         }

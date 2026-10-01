@@ -3,10 +3,7 @@ import Darwin
 @preconcurrency import RimeEngineC
 
 extension RimeContext {
-    // MARK: - Lifecycle
-
-    /// 主 App 与键盘扩展通用的启动入口：setup → initialize，不部署。
-    /// 阻塞性初始化在后台任务完成，会话创建与可观测状态发布回主线程。
+    /// 后台初始化引擎，回主线程创建会话并发布 UI 状态。
     @MainActor
     public func start() async {
         guard beginStart() else {
@@ -27,14 +24,13 @@ extension RimeContext {
             createSessionIfNeeded()
             // 本应用按自签安装设计：无 App Group 是常态，两个进程词库/日志各自独立，
             // 排障时先用这行确认当前进程的日志落点。
-            self.log("AppGroup \(Paths.appGroupContainer != nil ? "shared" : "per-app (self-signed baseline)")")
+            self.log("AppGroup \(RimePaths.appGroupContainer != nil ? "shared" : "per-app (self-signed baseline)")")
             self.log("RIME ready")
         } catch {
             log(error.localizedDescription)
         }
     }
 
-    /// 串行化守卫：返回 true 表示获得启动权。
     private func beginStart() -> Bool {
         lock.lock()
         if isStarting || isReady {
@@ -58,9 +54,8 @@ extension RimeContext {
         lock.unlock()
     }
 
-    /// 准备用户目录和安装配置，写入失败时中止启动。
     private func prepareUserDirectory() throws {
-        guard let user = Paths.userDataDirectory else {
+        guard let user = RimePaths.userDataDirectory else {
             throw RimeError.missingDirectory
         }
         try FileManager.default.createDirectory(at: user, withIntermediateDirectories: true)
@@ -72,29 +67,29 @@ extension RimeContext {
         lock.lock()
         defer { lock.unlock() }
         guard !isSetup else { return }
-        guard let shared = Paths.sharedSupportDirectory?.path,
-              let user = Paths.userDataDirectory?.path else {
-            NSLog("Quill setupOnce: missing directory shared=%@ user=%@",
-                  Paths.sharedSupportDirectory?.path ?? "nil" as NSString,
-                  Paths.userDataDirectory?.path ?? "nil" as NSString)
+        guard let shared = RimePaths.sharedSupportDirectory?.path,
+              let user = RimePaths.userDataDirectory?.path else {
+            NSLog("RIMEForiOS setupOnce: missing directory shared=%@ user=%@",
+                  RimePaths.sharedSupportDirectory?.path ?? "nil" as NSString,
+                  RimePaths.userDataDirectory?.path ?? "nil" as NSString)
             throw RimeError.missingDirectory
         }
 
         var traits = RimeTraits()
         rimeStructInit(&traits)
-        quill_configure_rime_modules(&traits)
+        rime_ios_configure_modules(&traits)
         setCString(shared, to: &traits.shared_data_dir)
         setCString(user, to: &traits.user_data_dir)
-        setCString(Paths.sharedSupportDirectory?.appendingPathComponent("build", isDirectory: true).path,
+        setCString(RimePaths.sharedSupportDirectory?.appendingPathComponent("build", isDirectory: true).path,
                    to: &traits.prebuilt_data_dir)
         // 键盘只保留 warning/error；不让 glog 另写不受轮转限制的 INFO 文件。
         traits.min_log_level = 1
         setCString("", to: &traits.log_dir)
-        setCString("Quill", to: &traits.distribution_name)
-        setCString("Quill", to: &traits.distribution_code_name)
-        setCString("rime.quill", to: &traits.app_name)
+        setCString("RIME for iOS", to: &traits.distribution_name)
+        setCString("rime-ios", to: &traits.distribution_code_name)
+        setCString("rime.ios", to: &traits.app_name)
 
-        NSLog("Quill RIME setup shared=%@ user=%@", shared as NSString, user as NSString)
+        NSLog("RIMEForiOS RIME setup shared=%@ user=%@", shared as NSString, user as NSString)
         rimeAPI.setup!(&traits)
         rimeAPI.initialize!(&traits)
         // initialize 只加载 kDefaultModules；部署任务由 levers 模块注册，
@@ -102,11 +97,9 @@ extension RimeContext {
         rimeAPI.deployer_initialize!(&traits)
 
         isSetup = true
-        NSLog("Quill RIME setup complete")
+        NSLog("RIMEForiOS RIME setup complete")
     }
 
-    /// 确保会话有效：无句柄则创建，句柄在 librime 侧失效则销毁重建。
-    /// 内部持锁（`NSRecursiveLock` 可重入），从 `start()` 与 `processKey()` 进入均安全。
     func createSessionIfNeeded() {
         lock.lock()
         defer { lock.unlock() }
@@ -124,11 +117,10 @@ extension RimeContext {
 
     private func createSession() {
         session = rimeAPI.create_session!()
-        NSLog("Quill RIME session created: %lu", session)
+        NSLog("RIMEForiOS RIME session created: %lu", session)
         selectDefaultSchema()
     }
 
-    /// 创建 session 后锁定 luna_pinyin 方案；缺失则 fallback 第一个可用方案。
     private func selectDefaultSchema() {
         guard session != 0 else { return }
         let schemas = readSchemaList()
@@ -163,8 +155,7 @@ extension RimeContext {
         log("session destroyed")
     }
 
-    /// 销毁并立即重建会话，让同步合并后的用户词库 / custom_phrase 生效。
-    /// 维护完成后在引擎队列调用；持锁确认无组合和未消费提交。
+    /// 维护结束后重建会话；持锁确认没有组合或未消费提交。
     public func recreateSession() {
         lock.lock()
         defer { lock.unlock() }

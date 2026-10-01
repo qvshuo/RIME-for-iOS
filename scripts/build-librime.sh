@@ -164,6 +164,7 @@ build_opencc() {
   cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
     -DBUILD_SHARED_LIBS=OFF \
     -DUSE_SYSTEM_MARISA=OFF \
+    -DSHARE_INSTALL_PREFIX=SharedSupport \
     -DBUILD_DOCUMENTATION=OFF \
     -DENABLE_GTEST=OFF \
     -DBUILD_OPENCC_TOOLS=OFF \

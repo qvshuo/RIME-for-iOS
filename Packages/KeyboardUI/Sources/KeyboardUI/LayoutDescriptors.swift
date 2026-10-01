@@ -1,14 +1,12 @@
 import Foundation
-import Models
+import KeyboardModels
 
-/// 键盘键位描述。身份由视图层的稳定行/列下标提供（布局文件固定），不再自持随机 UUID。
 public struct KeyDescriptor: Sendable {
     public let label: String
     public let action: KeyAction
     public let style: KeyStyle
-    /// 弹性宽度权重：非固定键按此权重分摊剩余宽度（默认 1.0）。
     public let width: CGFloat
-    /// 固定点宽（JSON `fixed` 字段）：nil 表示参与弹性分摊。方形键 / 宽键用它指定。
+    /// JSON 的 fixed 为点宽；nil 表示参与弹性分摊。
     public let fixedWidth: CGFloat?
 
     public init(
@@ -25,7 +23,6 @@ public struct KeyDescriptor: Sendable {
         self.fixedWidth = fixedWidth
     }
 
-    /// 复制自身并替换 label / style（重建键描述时保留其余字段）。
     public func with(label: String? = nil, style: KeyStyle? = nil) -> KeyDescriptor {
         KeyDescriptor(
             label: label ?? self.label,
@@ -43,7 +40,6 @@ public enum KeyStyle: String, Sendable {
     case confirm
 }
 
-/// 键盘一行键位描述。
 public struct RowDescriptor: Sendable {
     public let keys: [KeyDescriptor]
     public let leadingPadding: CGFloat

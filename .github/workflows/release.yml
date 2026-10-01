@@ -22,21 +22,21 @@ jobs:
 
       - name: Build unsigned device app
         run: |
-          xcodebuild -project Quill.xcodeproj -scheme Quill -configuration Release \
+          xcodebuild -project RIMEForiOS.xcodeproj -scheme RIMEForiOS -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/dd build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 
       - name: Package unsigned ipa
         run: |
           mkdir -p stage/Payload
-          cp -R build/dd/Build/Products/Release-iphoneos/Quill.app stage/Payload/
-          cd stage && zip -rqy -X "Quill-${GITHUB_REF_NAME#v}-unsigned.ipa" Payload
+          cp -R build/dd/Build/Products/Release-iphoneos/RIMEForiOS.app stage/Payload/
+          cd stage && zip -rqy -X "RIME-for-iOS-${GITHUB_REF_NAME#v}-unsigned.ipa" Payload
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            --title "Quill ${GITHUB_REF_NAME#v}" \
+            --title "RIME for iOS ${GITHUB_REF_NAME#v}" \
             --generate-notes \
-            stage/Quill-${GITHUB_REF_NAME#v}-unsigned.ipa
+            stage/RIME-for-iOS-${GITHUB_REF_NAME#v}-unsigned.ipa

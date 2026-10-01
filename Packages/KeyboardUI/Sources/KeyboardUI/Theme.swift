@@ -1,16 +1,12 @@
 import SwiftUI
 
-/// 键盘主题 token，近似 iOS 26 简体拼音键盘视觉。键帽纯色无任何效果，面板透明
-/// 由系统容器绘制；浅色不透明，深色为半透明叠加（经 ≈#2B2B2B 系统背板混合），
-/// 深浅色由 `@Environment(\.colorScheme)` 自动跟随。
 public struct Theme {
     public let keyBackground: Color
     public let specialKeyBackground: Color
-    /// 按键按压时的填充色（浅色变暗 / 深色变亮，原生同款；所有键型共用）。
     public let pressedKeyBackground: Color
     public let keyForeground: Color
     public let specialKeyForeground: Color
-    /// 预览气泡背景：必须不透明，否则深色下透出键缝显得「透明」。
+    /// 气泡必须不透明，避免键缝透出。
     public let previewBubbleBackground: Color
     public let keyCornerRadius: CGFloat
     public let keyHeight: CGFloat
@@ -19,37 +15,26 @@ public struct Theme {
     public let keyboardPadding: EdgeInsets
     public let candidateBarHeight: CGFloat
     public let candidateSelectionFill: Color
-    /// 候选栏右侧展开/收起箭头宽度（候选网格首行避让宽度）。
     public let chevronWidth: CGFloat
-    /// 候选单元格高度（折叠态选中背景与展开网格单元格一致）。
     public let candidateCellHeight: CGFloat
-    /// 选中候选 pill 高度（略高于普通候选，上下留白更大）。
     public let candidateSelectionHeight: CGFloat
-    /// 选中候选文字与背景的左右边距（普通候选用 10，选中收紧到该值）。
     public let candidateSelectionHPadding: CGFloat
-    /// 选中候选 pill 圆角。
     public let candidateSelectionCornerRadius: CGFloat
-    /// 候选文字字号（与 `candidateFont` 一致，供文本宽度测量）。
+    /// 字号须与 candidateFont 一致，否则测量和实际排版不符。
     public let candidateCellFontSize: CGFloat
-    /// 特殊键（123 / ABC / 中英切换 / 回车等）的文字字号。
     public let specialKeyFontSize: CGFloat
-    /// 同步 toast 文字字号与内边距。
     public let toastFontSize: CGFloat
     public let toastHPadding: CGFloat
     public let toastVPadding: CGFloat
-    /// 字符键按压气泡：边长 / 圆角 / 上移偏移 / 字号。
     public let previewBubbleSide: CGFloat
     public let previewBubbleCornerRadius: CGFloat
     public let previewBubbleOffsetY: CGFloat
     public let previewFontSize: CGFloat
-    /// 功能键图标（退格 / shift）字号。
     public let iconFontSize: CGFloat
-    /// 候选展开箭头字号。
     public let chevronIconFontSize: CGFloat
     public let font: Font
     public let candidateFont: Font
 
-    /// 键盘内容总高度：候选栏 + 键区 + 内边距。
     public var totalHeight: CGFloat {
         candidateBarHeight
             + keyboardPadding.top
@@ -154,7 +139,6 @@ public struct Theme {
     }
 }
 
-/// 深浅色主题共享的几何/字体 token。
 private struct ThemeGeometry {
     let keyCornerRadius: CGFloat
     let keyHeight: CGFloat
@@ -183,7 +167,6 @@ private struct ThemeGeometry {
 }
 
 public extension View {
-    /// 键帽背景：纯色圆角填充，按压切换到统一按压底色。
     @ViewBuilder
     func keyBackground(
         isPressed: Bool,
@@ -196,17 +179,14 @@ public extension View {
         )
     }
 
-    /// 悬浮元素（字符键按压气泡 / 同步 toast）共用阴影规格。
     func floatingShadow() -> some View {
         shadow(color: Color.black.opacity(0.2), radius: 2, y: 1)
     }
 }
 
 public extension Theme {
-    /// 确认（回车）键底色：单一常量，与 fcitx5-ios `highlightBackground` 一致。
     static let confirmKeyColor = Color(hex: 0x007AFF)
 
-    /// 键帽填充色（含按压态）：按压统一 pressedKeyBackground。纯函数供测试共用。
     func fillColor(style: KeyStyle, isPressed: Bool) -> Color {
         switch style {
         case .confirm:
@@ -220,7 +200,6 @@ public extension Theme {
 }
 
 extension Color {
-    /// 0xRRGGBB 十六进制颜色。
     init(hex: UInt32) {
         self.init(
             .sRGB,

@@ -1,8 +1,6 @@
 import SwiftUI
-import Models
+import KeyboardModels
 
-/// 候选面板（折叠态）：横向滚动展示全部候选，自然宽度不强制填满；
-/// 右侧 chevron 独立于滚动区外。注释不渲染。
 public struct CandidatePanel: View {
     let candidates: [Candidate]
     let highlightedIndex: Int
@@ -73,8 +71,6 @@ public struct CandidatePanel: View {
     }
 }
 
-/// 候选词单元格（折叠候选栏与展开网格共享）：选中 = pill，未选中 = 普通格。
-/// 规格由 Theme token 统一（高度/圆角/边距/填充），两处渲染必须一致。
 struct CandidateCellView: View {
     let text: String
     let isHighlighted: Bool
@@ -102,7 +98,6 @@ struct CandidateCellView: View {
     }
 }
 
-/// 候选栏右 / 网格角的展开箭头（折叠时向下、展开时向上）。
 struct CandidateChevronButton: View {
     let isExpanded: Bool
     let height: CGFloat
@@ -124,7 +119,6 @@ struct CandidateChevronButton: View {
     }
 }
 
-/// 候选词按下时触发触觉反馈（与按键一致的震动）。
 struct CandidateFeedbackButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
