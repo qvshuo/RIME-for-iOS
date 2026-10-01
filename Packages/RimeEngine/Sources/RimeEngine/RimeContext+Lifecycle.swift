@@ -82,11 +82,14 @@ extension RimeContext {
 
         var traits = RimeTraits()
         rimeStructInit(&traits)
+        quill_configure_rime_modules(&traits)
         setCString(shared, to: &traits.shared_data_dir)
         setCString(user, to: &traits.user_data_dir)
         setCString(Paths.sharedSupportDirectory?.appendingPathComponent("build", isDirectory: true).path,
                    to: &traits.prebuilt_data_dir)
-        setCString(Paths.logDirectory?.path, to: &traits.log_dir)
+        // 键盘只保留 warning/error；不让 glog 另写不受轮转限制的 INFO 文件。
+        traits.min_log_level = 1
+        setCString("", to: &traits.log_dir)
         setCString("Quill", to: &traits.distribution_name)
         setCString("Quill", to: &traits.distribution_code_name)
         setCString("rime.quill", to: &traits.app_name)

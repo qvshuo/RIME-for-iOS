@@ -12,7 +12,7 @@ public final class KeyboardDiagnostics: Sendable {
     private let lock = Mutex(())
     private var logURL: URL { directory.appendingPathComponent("keyboard.log") }
     private var markerURL: URL { directory.appendingPathComponent("session.json") }
-    private let limit = 1 << 20
+    private let limit = 256 * 1024
 
     private struct Session: Codable {
         let pid: Int32
@@ -51,7 +51,13 @@ public final class KeyboardDiagnostics: Sendable {
     }
 
     func tail() -> String {
-        lock.withLock { _ in Self.readTail(logURL, maxBytes: 8192) }
+        lock.withLock { _ in
+            var sections = ["键盘\n" + Self.readTail(logURL, maxBytes: 8192)]
+            if let engine = RimeContext.shared.exportLogURL() {
+                sections.append("引擎\n" + Self.readTail(engine, maxBytes: 8192))
+            }
+            return sections.joined(separator: "\n\n")
+        }
     }
 
     /// 生成独立快照，分享期间继续写日志或清空日志不会改变导出文件。
@@ -89,7 +95,7 @@ public final class KeyboardDiagnostics: Sendable {
         let offset = size > UInt64(maxBytes) ? size - UInt64(maxBytes) : 0
         do {
             try handle.seek(toOffset: offset)
-            var data = try handle.readToEnd() ?? Data()
+            var data = try handle.read(upToCount: maxBytes) ?? Data()
             // 先按字节丢弃残行，避免 UTF-8 多字节字符被截断导致整段读取失败。
             if offset > 0, let newline = data.firstIndex(of: 10) { data = data.suffix(from: data.index(after: newline)) }
             return String(decoding: data, as: UTF8.self)
@@ -103,12 +109,12 @@ public final class KeyboardDiagnostics: Sendable {
     private func append(_ message: String) {
         prepareDirectory()
         let attributes = try? FileManager.default.attributesOfItem(atPath: logURL.path)
-        if let size = attributes?[.size] as? NSNumber, size.intValue >= limit {
+        let data = Data("[\(Date().ISO8601Format())] \(message)\n".utf8).suffix(limit)
+        if let size = attributes?[.size] as? NSNumber, size.intValue + data.count > limit {
             let old = logURL.appendingPathExtension("old")
             try? FileManager.default.removeItem(at: old)
             try? FileManager.default.moveItem(at: logURL, to: old)
         }
-        let data = Data("[\(Date().ISO8601Format())] \(message)\n".utf8)
         if let handle = try? FileHandle(forWritingTo: logURL) {
             defer { try? handle.close() }
             do {

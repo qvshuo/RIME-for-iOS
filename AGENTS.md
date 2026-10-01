@@ -99,7 +99,7 @@ The main app only displays keyboard setup status and version. It does not initia
 - `SyncSettingsModel`: keyboard-local credential draft, selected field and connection-test state. The model persists across panel switches; it loads saved credentials once.
 - `KeyboardViewModel`: input layout/language/shift. Credential editing uses a separate instance so it does not change the host input language.
 
-Credential fields are buttons, not native TextField/SecureField controls. Selecting one replaces the candidate bar with an editor toolbar and routes the existing key grid into the draft. Those keys never reach UITextDocumentProxy or librime. The toolbar supports explicit paste, clear, password visibility and Done; Return moves to the next field. Passwords and keystrokes are never logged.
+Credential fields stay in a single vertical list while editing. Selecting a row shows its caret and Paste/Clear controls, with the existing key grid below the list; the panel header has one Done button. Passwords are always visible. Fields remain local draft controls, not native TextField/SecureField controls, so they do not request another system keyboard inside the extension. Draft keys never reach UITextDocumentProxy or librime. Return advances to the next row. Passwords and keystrokes are never logged.
 
 Keep candidates/preedit reads in child views so typing does not invalidate the keyboard root. Pass the engine explicitly to `KeyboardViewModel.consume`; do not retain a context in the model.
 
@@ -108,6 +108,7 @@ Keep candidates/preedit reads in child views so typing does not invalidate the k
 - **`RimeTraits.data_size` must be initialized** with `rimeStructInit` (`sizeof(RimeTraits) - sizeof(data_size)`) or optional fields (`log_dir`, …) are ignored.
 - **`RimeContext` / `RimeCommit` are initialized with `RIME_STRUCT(Type, var)`** so `data_size` is nonzero; otherwise `RimeGetContext`/`RimeGetCommit` return `False` and the keyboard shows no preedit/candidates even though keys are "handled".
 - **Commit text must be captured immediately**: `RimeGetCommit` returns the commit only once per composition; `refreshContext()` consumes it into internal storage. Read it via `pollCommit()` only.
+- **Static plugins require explicit references**: `RimeEngineC/modules.cpp` retains the Lua and octagram registration objects and configures `traits.modules`. Merely bundling their objects in librime.a does not make the linker keep them.
 - **`setup()` runs once per process** (`isSetup` flag + lock). Calling `InitGoogleLogging()` twice crashes inside glog.
 - Session is **lazily created under the engine lock** (`createSessionIfNeeded()`). `start()` pre-creates one on the main thread so the first keypress is cheap; synchronization and reload run on the serial maintenance queue.
 - After creating a session the bridge selects **`luna_pinyin`** (fallback: first available schema) and sets `ascii_mode=false`. `RimeContext` no longer persists a preferred schema; there is **no schema switcher UI**.
@@ -130,7 +131,7 @@ Keep candidates/preedit reads in child views so typing does not invalidate the k
 - **The keyboard follows the host app's appearance directly, no pin**: a transient `overrideUserInterfaceStyle = UIScreen.main.traitCollection.userInterfaceStyle` (system) pin was added to hide a one-frame flash on appearance toggles, but it forces the **system** theme over a per-app override and is only cleared when the controller's own trait *changes* — so a persistently light app under a dark system stays dark forever. Removed to match fcitx5-ios; expect a possible one-frame flash when the host style differs from the system's.
 - **Light theme is opaque** (`keyBackground` and `specialKeyBackground` both `#FFFFFF`; light function keys stay white). **Dark theme is fcitx5-ios-style semi-transparent overlays** blended over the system dark backdrop (`#2B2B2B`). The alphas are **derived, not hand-picked**: `Theme.overlay(base:target:)` solves the alpha that makes a neutral-grey base (white or `#858585`) hit the target opaque grey over `darkBackdrop` — key →`#585858`, special →`#3A3A3A`, pressed →`#6B6B6B`, candidate selection →`#5A5A5A`. `darkBackdrop` is the single assumption point; if iOS ever changes the keyboard backdrop color, re-tune it and re-run the blend assertions in `ThemeTests.swift`.
 - **The keyboard panel background is transparent** — `Color.black.opacity(0.001).ignoresSafeArea()` in `KeyboardView` — the system keyboard container draws the background. The hosting controller's view is transparent too.
-- **Keyboard slides up smoothly via `viewWillAppear` hosting**: the `UIHostingController` is created in `viewDidLoad` but added as a child + constraints activated in `viewWillAppear` (mounting in `viewDidLoad` causes a huge layout shift). Height = intrinsic size `.frame(height: theme.totalHeight)` — no `preferredContentSize`, no manual safe-area math.
+- **Keyboard slides up smoothly via `viewWillAppear` hosting**: the `UIHostingController` is created in `viewDidLoad` but added as a child + constraints activated in `viewWillAppear` (mounting in `viewDidLoad` causes a huge layout shift). Height follows SwiftUI intrinsic size (266 pt input/log, 350 pt sync, 520 pt inline sync editing). The root UIInputView enables allowsSelfSizing and the hosting controller tracks intrinsicContentSize, so UIKit resizes when the inline editor appears. Do not substitute manual safe-area math or preferredContentSize.
 
 ## UI: keyboard dimensions & key widths
 
@@ -171,7 +172,7 @@ Always acts as a return key. With a RIME preedit: shows `⏎`, **no** highlight.
 
 ### Backspace
 
-Keep it simple: if `rimeContext.preedit` is empty → `textDocumentProxy.deleteBackward()` directly (no RIME round-trip); otherwise let RIME delete the composition, falling back to `deleteBackward()` only when RIME reports unhandled. **Do not** add proxy re-reads or preedit-change heuristics into the backspace path — that regresses rapid backspace deletion. `syncText()` clears marked text when the composition becomes empty via `setMarkedText("")` + `unmarkText()` (a bare `unmarkText()` would *finalize* the last marked letter, needing two backspaces). Commit paths never hit that branch.
+Keep it simple: if `rimeContext.preedit` is empty → `textDocumentProxy.deleteBackward()` directly (no RIME round-trip); otherwise let RIME delete the composition, falling back to `deleteBackward()` only when RIME reports unhandled. **Do not** add proxy re-reads or preedit-change heuristics into the backspace path — that regresses rapid backspace deletion. `syncText()` clears marked text when the composition becomes empty via `setMarkedText("")` + `unmarkText()` (a bare `unmarkText()` would *finalize* the last marked letter, needing two backspaces). Commit paths use `MarkedTextWriter`: clear marked text, unmark, then insert the final text. Direct-input suffixes are combined with the pending composition into one insertion; do not rely on the host preserving the marked-text end caret after unmarking.
 
 ### Space bar & manual sync trigger
 
@@ -197,7 +198,7 @@ Only `.default` and `.asciiCapable` are honored (fcitx5-ios ignores `UIKeyboardT
 
 ## Settings and sync panels
 
-The main app is a minimal Form with enablement status, a system settings link and version. Use explicit button styles in Form/List, since automatic style can consume taps on iOS 26.
+The main app uses a ScrollView with a title, enablement status card, system settings link and version. The title and page share the system grouped background, with explicit vertical separation. Panel navigation and actions use native Liquid Glass; text fields and log content use stable readable surfaces. Sync and Log have dedicated headers instead of a candidate bar.
 
 The keyboard Sync panel offers server URL, username, password, sync directory and installation ID, plus Save, Delete and Sync. Save validates, tests connectivity, then writes an immutable snapshot; failure preserves both the previous saved configuration and the draft. Controls are disabled during testing/sync; deletion needs confirmation. Defaults are `Rime_Sync` and `Quill`. Multiple devices must use distinct installation IDs.
 
@@ -220,10 +221,10 @@ No periodic sync, local mirror, full deploy or runtime schema switcher. `deploye
 
 ## Logs & diagnostics
 
-- Engine stderr/glog: `Paths.logDirectory/quill.log`, rotated at process initialization above 1MiB. Startup prunes only named glog level files, never unrelated directories or diagnostics.
-- Keyboard lifecycle/panel/sync events: `Logs/Keyboard/keyboard.log`, serialized writes, 1MiB rotation and one previous file. No signal or uncaught-exception handlers.
+- Engine stderr/glog: a process-wide nonblocking pipe reader writes to `Paths.logDirectory/quill.log` through a bounded serial writer (256 KiB current + one previous file). Native logging starts at warning level and writes only to stderr, avoiding duplicate glog level files. Startup prunes legacy named glog level files, never unrelated directories. Clear drains pending output and truncates through the same queue, without closing stderr.
+- Keyboard lifecycle/panel/sync events: `Logs/Keyboard/keyboard.log`, serialized writes, 256 KiB rotation and one previous file. No signal or uncaught-exception handlers.
 - A PID/session ownership marker records whether the previous process completed cleanup. Only log an unfinished previous session if its PID is gone; OS reclamation can cause this, so it is not a confirmed crash. An old controller cannot delete a newer controller's marker, and clearing logs leaves the marker intact.
-- The Log panel shows the latest 8KB, with explicit refresh. Export creates a bounded snapshot of keyboard + engine current/previous logs, suitable for sharing. Clear truncates the active engine log inode so stderr continues writing to the visible file.
+- The Log panel shows the latest 8 KiB each of keyboard and engine logs, with explicit refresh and a refresh timestamp. Export creates a bounded snapshot of four current/previous files (about 1 MiB maximum). Clear/Delete confirmation stays inline: `.confirmationDialog` raises `Feature not available in extensions of type com.apple.keyboard-service` in the keyboard extension. Do not use text selection menus in the log panel.
 
 ## RIME data conventions
 
@@ -271,7 +272,7 @@ xcodebuild test -project Quill.xcodeproj -scheme Quill -sdk iphonesimulator \
 - Scheme test target = `QuillKeyboardUITests` (swift-testing; the hostless bundle links `KeyboardUI` + `RimeEngine` + `Models` + the binary xcframeworks).
 - Cover `RowLayoutMath`, `CandidateGridLayout`, `ShiftTap`, `LayoutAction`, `SyncToast` messaging, and `ThemeFillColor` (incl. the dark blend assertions). Layout/grid math must live as **pure functions** in the library so the test bundle and the app share one implementation.
 - Note: `All tests` may first appear to run from XCTest (`Executed 0 tests`) before the swift-testing suites are listed.
-- Regression suites cover WebDAV paths/XML, credential validation/storage, draft editing, failed saves, file orchestration failures/cleanup, log UTF-8 tails/rotation/session ownership, and deep/light panel rendering. Test orchestration through an injected transport/engine runner, without networking or deploying RIME.
+- Regression suites cover WebDAV paths/XML, credential validation/storage, draft editing, failed saves, file orchestration failures/cleanup, log UTF-8 tails/rotation/session ownership, and deep/light panel sizing. Liquid Glass cannot be rendered faithfully by ImageRenderer; visual checks must use a running UIKit app or keyboard extension. Test orchestration through an injected transport/engine runner, without networking or deploying RIME.
 - Toast timing lives in the process-wide sync state. Do not add wall-clock tests for cosmetic dismissal delays.
 
 ## Conventions for agents

@@ -55,25 +55,25 @@ public struct KeyboardView: View {
                         )
                         .transition(.opacity)
                     } else {
-                        if settings.editingField != nil {
-                            CredentialEditorBar(model: settings, theme: theme)
-                            keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
-                        } else {
+                        if inputState.panelMode == .input {
                             CandidatesBar(
-                                rimeContext: rimeContext,
-                                inputState: inputState,
-                                theme: theme,
-                                isExpanded: $candidatesExpanded,
-                                onSelect: selectAndCollapse
+                                rimeContext: rimeContext, inputState: inputState, theme: theme,
+                                isExpanded: $candidatesExpanded, onSelect: selectAndCollapse
                             )
+                            keyArea(theme: theme, in: geometry.size.width, model: viewModel)
+                        } else {
+                            PanelHeader(inputState: inputState, settings: settings, theme: theme)
                             switch inputState.panelMode {
-                            case .input:
-                                keyArea(theme: theme, in: geometry.size.width, model: viewModel)
                             case .sync:
                                 SyncPanelView(model: settings, inputState: inputState, theme: theme,
                                               onSync: { onKey(.startSync) })
+                                if settings.editingField != nil {
+                                    keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
+                                }
                             case .log:
                                 LogPanelView(theme: theme)
+                            case .input:
+                                EmptyView()
                             }
                         }
 
@@ -86,7 +86,7 @@ public struct KeyboardView: View {
             .animation(.easeOut(duration: 0.1), value: candidatesExpanded)
         }
         // 用主题总高度作 SwiftUI 内在尺寸，系统键盘容器按此高度平滑滑入。
-        .frame(height: theme.totalHeight)
+        .frame(height: panelHeight(theme: theme))
         .frame(maxWidth: .infinity)
         // Toast 的观察限定在悬浮层，避免输入树因提示变化整体刷新。
         .overlay(alignment: .top) {
@@ -128,6 +128,11 @@ public struct KeyboardView: View {
         }
     }
 
+    private func panelHeight(theme: Theme) -> CGFloat {
+        guard inputState.panelMode == .sync else { return theme.totalHeight }
+        return settings.editingField == nil ? 350 : 520
+    }
+
     private func selectAndCollapse(_ index: Int) {
         // 维护进行中不向引擎发送输入，结果提示期间恢复正常输入。
         guard !inputState.isSyncing else { return }
@@ -166,7 +171,7 @@ public struct KeyboardView: View {
                         theme: theme,
                         totalWidth: totalWidth,
                         shiftState: model.shiftState,
-                        returnKeyLabel: editing ? (settings.editingField == .installationID ? "完成" : "下一项") : model.returnKeyLabel,
+                        returnKeyLabel: editing ? "下一项" : model.returnKeyLabel,
                         rimeContext: rimeContext,
                         inputState: inputState,
                         editingCredentials: editing,
@@ -202,6 +207,55 @@ public struct KeyboardView: View {
     }
 }
 
+private struct PanelMenu: View {
+    let inputState: InputState
+    let theme: Theme
+
+    var body: some View {
+        Menu {
+            Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
+            Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
+            Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(theme.keyForeground)
+                .frame(width: 32, height: 32)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .accessibilityLabel("功能菜单")
+    }
+}
+
+private struct PanelHeader: View {
+    let inputState: InputState
+    let settings: SyncSettingsModel
+    let theme: Theme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            PanelMenu(inputState: inputState, theme: theme)
+            Text(inputState.panelMode == .sync ? "同步" : "日志")
+                .font(.system(size: 17, weight: .semibold))
+            Spacer()
+            if settings.editingField != nil {
+                Button("完成") { settings.editingField = nil }
+                    .buttonStyle(.glass)
+                    .font(.system(size: 14, weight: .medium))
+            } else {
+                Button { inputState.panelMode = .input } label: {
+                    Image(systemName: "keyboard").font(.system(size: 14))
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel("返回键盘")
+            }
+        }
+        .foregroundStyle(theme.keyForeground)
+        .padding(.horizontal, 12)
+        .frame(height: 48)
+    }
+}
+
 /// 折叠候选栏：在自身 body 观察候选，刷新只重求值本视图。
 private struct CandidatesBar: View {
     let rimeContext: RimeContext
@@ -213,20 +267,8 @@ private struct CandidatesBar: View {
     var body: some View {
         HStack(spacing: 0) {
             if rimeContext.preedit.isEmpty || inputState.panelMode != .input {
-                Menu {
-                    if inputState.panelMode != .input {
-                        Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
-                        Divider()
-                    }
-                    Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
-                    Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 18))
-                        .foregroundStyle(theme.keyForeground)
-                        .frame(width: theme.chevronWidth, height: theme.candidateBarHeight + theme.keyboardPadding.top)
-                }
-                .accessibilityLabel("功能菜单")
+                PanelMenu(inputState: inputState, theme: theme)
+                    .frame(width: 40, height: theme.candidateBarHeight + theme.keyboardPadding.top)
             }
             CandidatePanel(candidates: rimeContext.candidates,
                            highlightedIndex: rimeContext.highlightedCandidateIndex,

@@ -7,4 +7,12 @@
 #include <rime_api_stdbool.h>
 #include <rime_api.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+void quill_configure_rime_modules(RimeTraits* traits);
+#ifdef __cplusplus
+}
+#endif
+
 #endif  // QUILL_RIME_H

@@ -26,6 +26,12 @@ final class InputController: UIInputViewController {
         WebDAVSync.runAfterSync { rime.releaseSession(owner) }
     }
 
+    override func loadView() {
+        let inputView = UIInputView(frame: .zero, inputViewStyle: .keyboard)
+        inputView.allowsSelfSizing = true
+        view = inputView
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -102,6 +108,8 @@ final class InputController: UIInputViewController {
 
     private func createKeyboardView() {
         let hostingController = UIHostingController(rootView: makeKeyboardView())
+        // 同步页编辑时内容会变高，须把 SwiftUI 尺寸变化传递给系统键盘容器。
+        hostingController.sizingOptions = .intrinsicContentSize
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
         // UIKit 层全透明，面板背景由系统键盘容器绘制。
         hostingController.view.backgroundColor = .clear
@@ -136,6 +144,15 @@ final class InputController: UIInputViewController {
                 displayedPreedit = ""
             }
         case .directInput(let text):
+            if !rimeContext.preedit.isEmpty {
+                resetDoubleSpaceState()
+                // 组合与后续字符必须作为一次宿主写入，避免跨进程光标更新晚于第二次插入。
+                MarkedTextWriter.finishComposition(appending: text, from: rimeContext,
+                                                  replacingMarkedText: !displayedPreedit.isEmpty, to: textDocumentProxy)
+                inputState.hasInputText = true
+                displayedPreedit = ""
+                return
+            }
             if text == " " {
                 if !handleDoubleSpaceAsPeriod(".") {
                     insertToProxy(" ")
@@ -144,7 +161,6 @@ final class InputController: UIInputViewController {
                 return
             }
             resetDoubleSpaceState()
-            commitPendingComposition()
             insertToProxy(text)
             return
         case .backspace:
@@ -226,15 +242,12 @@ final class InputController: UIInputViewController {
         inputState.sync.start()
     }
 
-    /// 提交当前拼音组合：优先空格确认，否则直接上屏 preedit 原文。
     private func commitPendingComposition() {
-        let preedit = rimeContext.preedit
-        guard !preedit.isEmpty else { return }
-        if rimeContext.commitComposition() {
-            syncText()
-        } else {
-            commitRawPreedit(preedit)
-        }
+        guard !rimeContext.preedit.isEmpty else { return }
+        MarkedTextWriter.finishComposition(from: rimeContext,
+                                          replacingMarkedText: !displayedPreedit.isEmpty, to: textDocumentProxy)
+        inputState.hasInputText = true
+        displayedPreedit = ""
     }
 
     /// 直接上屏 preedit 原文并重置 RIME（用于 RIME 未确认/未处理组合的兜底提交）。
@@ -262,17 +275,9 @@ final class InputController: UIInputViewController {
         inputState.hasInputText = true
     }
 
-    /// 上屏最终文本。组合期 marked 区是原始拼音，直接 `unmarkText()` 会把拼音
-    /// 固化进文档再拼上候选；改为以最终文本覆盖 marked 区后固化。
     private func commitReplacingMarkedText(_ text: String) {
-        if displayedPreedit.isEmpty {
-            insertToProxy(text)
-        } else {
-            let end = text.utf16.count
-            textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: end, length: 0))
-            textDocumentProxy.unmarkText()
-            inputState.hasInputText = true
-        }
+        MarkedTextWriter.commit(text, replacingMarkedText: !displayedPreedit.isEmpty, to: textDocumentProxy)
+        inputState.hasInputText = true
     }
 
     private func resetDoubleSpaceState() {

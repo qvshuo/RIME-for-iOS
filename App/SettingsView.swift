@@ -19,53 +19,45 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    HStack(spacing: 10) {
-                        Image(systemName: isOurKeyboardEnabled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .font(.body)
-                            .foregroundStyle(isOurKeyboardEnabled ? Color.green : Color.orange)
-                            .frame(width: 24)
-                        Text(isOurKeyboardEnabled ? "Quill 输入法已启用" : "Quill 输入法未启用")
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                Text("Quill 输入法")
+                    .font(.largeTitle.bold())
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+
+                VStack(alignment: .leading, spacing: 20) {
+                    Label(isOurKeyboardEnabled ? "Quill 输入法已启用" : "Quill 输入法未启用",
+                          systemImage: isOurKeyboardEnabled ? "checkmark.circle.fill" : "keyboard")
+                        .font(.body)
+                        .foregroundStyle(isOurKeyboardEnabled ? Color.green : Color.primary)
                     if !isOurKeyboardEnabled {
-                        Button {
+                        Button("去系统设置中开启", systemImage: "arrow.up.forward") {
                             openKeyboardSettings()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "keyboard")
-                                    .font(.body)
-                                    .foregroundStyle(.tint)
-                                    .frame(width: 24)
-                                Text("去系统设置中开启")
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.regular)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
 
-                Section {
-                    LabeledContent("版本") {
-                        Text(versionText)
-                    }
-                } header: {
-                    Text("关于")
-                } footer: {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("关于").font(.subheadline).foregroundStyle(.secondary)
+                    LabeledContent("版本", value: versionText)
+                        .padding(20)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
                     Text("基于 RIME 输入法引擎：聪明的输入法懂我心意。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
                 }
             }
-            .formStyle(.grouped)
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .padding(.top, 8)
-            .navigationTitle("Quill 输入法")
-            .navigationBarTitleDisplayMode(.large)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     /// 逐级尝试直达键盘设置页，全部失败退回本 App 设置页（系统未公开直达 scheme）。
