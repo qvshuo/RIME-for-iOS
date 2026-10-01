@@ -196,10 +196,13 @@ extension RimeContext {
     }
 
     func setContext(candidates: [Candidate], preedit: String, highlighted: Int) {
+        let revision = contextRevision.withLock { $0 &+= 1; return $0 }
         let action = {
-            self.candidates = candidates
-            self.preedit = preedit
-            self.highlightedCandidateIndex = highlighted
+            // 只锁发布代次，主线程不等待后台维护持有的引擎锁。
+            guard self.contextRevision.withLock({ $0 == revision }) else { return }
+            if self.candidates != candidates { self.candidates = candidates }
+            if self.preedit != preedit { self.preedit = preedit }
+            if self.highlightedCandidateIndex != highlighted { self.highlightedCandidateIndex = highlighted }
         }
         if Thread.isMainThread {
             action()

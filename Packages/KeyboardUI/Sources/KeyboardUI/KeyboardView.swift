@@ -73,7 +73,7 @@ public struct KeyboardView: View {
                                     keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
                                 }
                             case .log:
-                                LogPanelView(theme: theme, onExport: onExportLogs)
+                                LogPanelView(isVisible: inputState.isVisible, theme: theme, onExport: onExportLogs)
                             case .input:
                                 EmptyView()
                             }
@@ -119,7 +119,6 @@ public struct KeyboardView: View {
         }
         .onChange(of: inputState.panelMode) { _, mode in
             settings.editingField = nil
-            if mode != .log { inputState.logExportHeight = nil }
             let name = switch mode { case .input: "输入"; case .sync: "同步"; case .log: "日志" }
             KeyboardDiagnostics.shared.record("面板 → \(name)")
         }
@@ -132,9 +131,11 @@ public struct KeyboardView: View {
     }
 
     private func panelHeight(theme: Theme) -> CGFloat {
-        if inputState.panelMode == .log, let height = inputState.logExportHeight { return height }
-        guard inputState.panelMode == .sync else { return theme.totalHeight }
-        return settings.editingField == nil ? 480 : 580
+        switch inputState.panelMode {
+        case .input: theme.totalHeight
+        case .sync: settings.editingField == nil ? 480 : 580
+        case .log: 480
+        }
     }
 
     private func selectAndCollapse(_ index: Int) {
@@ -350,6 +351,8 @@ private struct KeyboardRowView: View {
                 }
         }
         .padding(.horizontal, layout.sideInset)
+        // 布局切换同时改变键宽与内容，几何变化必须即时完成。
+        .transaction { $0.animation = nil }
     }
 
     private func effectiveDescriptor(

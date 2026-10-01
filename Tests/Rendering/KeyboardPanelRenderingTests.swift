@@ -16,11 +16,10 @@ struct KeyboardPanelRenderingTests {
             let content = KeyboardView(rimeContext: .shared, inputState: state, onKey: { _ in })
                 .preferredColorScheme(dark ? .dark : .light)
                 .background(Color(uiColor: dark ? UIColor(white: 43.0 / 255, alpha: 1) : UIColor(white: 0.92, alpha: 1)))
-            let height: CGFloat = mode == .sync ? 480 : 266
+            let height: CGFloat = mode == .input ? 266 : 480
             let hosting = UIHostingController(rootView: content)
             let size = hosting.sizeThatFits(in: CGSize(width: 402, height: height))
             #expect(size == CGSize(width: 402, height: height))
-
         }
     }
 }

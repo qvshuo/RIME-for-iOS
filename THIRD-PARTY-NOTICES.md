@@ -25,15 +25,15 @@ The librime build merges these plugins (`BUILD_MERGED_PLUGINS=ON`):
 
 | Plugin | Version | License | Copyright |
 |---|---|---|---|
-| [librime-lua](https://github.com/rime/librime-lua) (with in-tree Lua 5.4.8) | 2026-05 (`ec52e48`) | BSD-3-Clause | librime-lua Developers |
+| [librime-lua](https://github.com/rime/librime-lua) (with in-tree Lua 5.4.8) | Squirrel 1.1.2 baseline (`68f9c36`) | BSD-3-Clause | librime-lua Developers |
 | Lua | 5.4.8 | MIT | PUC-Rio |
-| [librime-octagram](https://github.com/rime/librime-octagram) | 2026-07 (`bfb168c`) | BSD-3-Clause | RIME Developers |
+| [librime-octagram](https://github.com/rime/librime-octagram) | Squirrel 1.1.2 baseline (`dfcc151`) | BSD-3-Clause | RIME Developers |
 
 ## RIME data in `Resources/SharedSupport/`
 
 RIME for iOS reads prebuilt data from `Resources/SharedSupport/build/` and the
 bundled source files. Most files are copied verbatim from upstream and must
-track those sources (see AGENTS.md); attribution is therefore per source.
+track those sources (see AGENTS.md and docs/dependencies.md); attribution is therefore per source.
 
 | Content | Source | License |
 |---|---|---|

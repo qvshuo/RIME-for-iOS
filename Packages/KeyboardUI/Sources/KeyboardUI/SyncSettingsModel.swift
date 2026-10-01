@@ -9,6 +9,12 @@ final class SyncSettingsModel {
     enum Field: Int, CaseIterable, Identifiable {
         case server, username, password, path, installationID
         var id: Self { self }
+        var isRequired: Bool {
+            switch self {
+            case .server, .username, .password: true
+            case .path, .installationID: false
+            }
+        }
         var title: String {
             switch self {
             case .server: "服务器"

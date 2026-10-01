@@ -13,6 +13,7 @@ public final class RimeContext: @unchecked Sendable {
     let lock = NSRecursiveLock()
     private let sessionOwner = Mutex<UUID?>(nil)
 
+    let contextRevision = Mutex<UInt64>(0)
     @ObservationIgnored var isSetup = false
     @ObservationIgnored var isStarting = false
     @ObservationIgnored var isReady = false

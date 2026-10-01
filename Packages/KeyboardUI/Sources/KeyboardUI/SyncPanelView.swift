@@ -17,7 +17,7 @@ struct SyncPanelView: View {
                             if item != .installationID { Divider().padding(.leading, 14) }
                         }
                     }
-                    .background(theme.keyBackground, in: RoundedRectangle(cornerRadius: 18))
+                    .background(theme.panelBackground, in: RoundedRectangle(cornerRadius: 18))
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
                     .padding(.bottom, 4)
@@ -29,6 +29,11 @@ struct SyncPanelView: View {
                         withAnimation(.easeOut(duration: 0.18)) { reader.scrollTo(field, anchor: .center) }
                     }
                 }
+            }
+            if model.hasUnsavedChanges && model.hasSavedCredentials {
+                message("修改后请先保存。", isError: false)
+            } else if let text = model.message {
+                message(text, isError: model.isError)
             }
             if confirmingDelete {
                 HStack {
@@ -56,9 +61,14 @@ struct SyncPanelView: View {
                         Spacer(minLength: 0)
                         Button(action: onSync) {
                             HStack(spacing: 5) {
-                                if inputState.isSyncing { ProgressView().controlSize(.mini) }
+                                if inputState.isSyncing {
+                                    ProgressView().controlSize(.mini)
+                                } else {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                }
                                 Text(inputState.isSyncing ? "同步中" : "同步")
                             }
+                            .frame(width: 80, height: 20)
                         }
                         .buttonStyle(.glassProminent)
                         .tint(.blue)
@@ -69,11 +79,6 @@ struct SyncPanelView: View {
                 .font(.system(size: 14, weight: .medium))
                 .controlSize(.regular)
                 .padding(.horizontal, 12)
-            }
-            if model.hasUnsavedChanges && model.hasSavedCredentials {
-                message("修改后请先保存。", isError: false)
-            } else if let text = model.message {
-                message(text, isError: model.isError)
             }
         }
         .padding(.bottom, 10)
@@ -94,9 +99,13 @@ struct SyncPanelView: View {
         return HStack(spacing: 10) {
             Button { model.editingField = field } label: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(field.title)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(theme.keyForeground)
+                    HStack(spacing: 0) {
+                        Text(field.title).foregroundStyle(theme.keyForeground)
+                        if field.isRequired {
+                            Text("*").foregroundStyle(.red)
+                        }
+                    }
+                    .font(.system(size: 14, weight: .medium))
                     HStack(alignment: .top, spacing: 2) {
                         Text(value.isEmpty && !editing ? field.placeholder : value)
                             .foregroundStyle(value.isEmpty ? theme.keyForeground.opacity(0.55) : theme.keyForeground)
@@ -113,6 +122,7 @@ struct SyncPanelView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("编辑\(field.title)")
+            .accessibilityHint(field.isRequired ? "必填" : "留空使用默认值")
             .accessibilityValue(value)
             if editing {
                 Button {
@@ -129,7 +139,6 @@ struct SyncPanelView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(minHeight: 68)
-        .background(editing ? Color.accentColor.opacity(0.07) : Color.clear)
         .disabled(model.isTesting || inputState.isSyncing)
     }
 }

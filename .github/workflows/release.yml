@@ -20,6 +20,9 @@ jobs:
           echo "Using $latest"
           sudo xcode-select -s "/Applications/$latest"
 
+      - name: Verify bundled dependencies
+        run: ./scripts/verify-dependencies.sh --binaries
+
       - name: Build unsigned device app
         run: |
           xcodebuild -project RIMEForiOS.xcodeproj -scheme RIMEForiOS -configuration Release \
@@ -28,9 +31,8 @@ jobs:
 
       - name: Package unsigned ipa
         run: |
-          mkdir -p stage/Payload
-          cp -R build/dd/Build/Products/Release-iphoneos/RIMEForiOS.app stage/Payload/
-          cd stage && zip -rqy -X "RIME-for-iOS-${GITHUB_REF_NAME#v}-unsigned.ipa" Payload
+          ./scripts/package-ipa.sh build/dd/Build/Products/Release-iphoneos/RIMEForiOS.app \
+            "stage/RIME-for-iOS-${GITHUB_REF_NAME#v}-unsigned.ipa"
 
       - name: Create GitHub release
         env:

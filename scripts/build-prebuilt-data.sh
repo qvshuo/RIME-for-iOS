@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Generate bundled data with a host librime build, keeping deployment out of the extension.
 # Uses ../librime; run ./scripts/build-prebuilt-data.sh after schema changes.
@@ -13,7 +13,7 @@ SHARED_SUPPORT="$ROOT/Resources/SharedSupport"
 
 export BOOST_ROOT="$DEPS_DIR/boost-1.89.0"
 
-mkdir -p "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR/include"
 
 HOST_CMAKE_ARGS=(
   -DCMAKE_BUILD_TYPE=Release
@@ -21,16 +21,13 @@ HOST_CMAKE_ARGS=(
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR"
 )
 
-# ------------------------------------------------------------------
-# 1. Boost (host)
-# ------------------------------------------------------------------
 build_boost() {
   echo "=== Building host Boost ==="
   cd "$BOOST_ROOT"
   if [[ ! -f b2 ]]; then
     ./bootstrap.sh --with-toolset=clang --with-libraries=filesystem,regex,atomic
   fi
-  ./b2 -a -q \
+  ./b2 -q \
     --with-filesystem --with-regex --with-atomic \
     toolset=clang \
     link=static \
@@ -40,26 +37,19 @@ build_boost() {
     stage
   mkdir -p "$INSTALL_DIR/lib"
   cp "stage-host/lib/libboost_"*.a "$INSTALL_DIR/lib/"
-  cp -R "$BOOST_ROOT/boost" "$INSTALL_DIR/include/" 2>/dev/null || true
+  cp -R "$BOOST_ROOT/boost" "$INSTALL_DIR/include/"
 }
 
-# ------------------------------------------------------------------
-# 2. deps (host)
-# ------------------------------------------------------------------
 build_dep() {
   local name=$1
   local src="$DEPS_DIR/$name"
   local bdir="$BUILD_DIR/$name-host"
-  local extra=${2:-}
+  shift
   echo "=== Building host $name ==="
-  # shellcheck disable=SC2086
-  cmake -S "$src" -B "$bdir" "${HOST_CMAKE_ARGS[@]}" $extra
+  cmake -S "$src" -B "$bdir" "${HOST_CMAKE_ARGS[@]}" "$@"
   cmake --build "$bdir" --target install -j"$(sysctl -n hw.ncpu)"
 }
 
-# ------------------------------------------------------------------
-# 3. librime (host, shared libs so rime_deployer is built)
-# ------------------------------------------------------------------
 build_librime() {
   echo "=== Building host librime (with rime_deployer) ==="
   local bdir="$BUILD_DIR/librime-host"
@@ -67,6 +57,7 @@ build_librime() {
     -DBUILD_SHARED_LIBS=ON \
     -DBUILD_STATIC=ON \
     -DBUILD_MERGED_PLUGINS=ON \
+    -DENABLE_EXTERNAL_PLUGINS=OFF \
     -DBUILD_TEST=OFF \
     -DBOOST_ROOT="$BOOST_ROOT" \
     -DBoost_NO_BOOST_CMAKE=TRUE \
@@ -75,32 +66,45 @@ build_librime() {
   cmake --build "$bdir" --target rime_deployer -j"$(sysctl -n hw.ncpu)"
 }
 
-# ------------------------------------------------------------------
-# 4. Deploy SharedSupport -> build/*.bin
-# ------------------------------------------------------------------
 deploy() {
   echo "=== Deploying prebuilt data ==="
-  local user_dir="$BUILD_DIR/deploy-user"
+  local stage previous
+  stage="$(mktemp -d "$BUILD_DIR/deploy.XXXXXX")"
+  previous="$stage/previous-build"
+  # 两次重命名之间收到退出信号时，也要把旧数据放回原位置。
+  trap 'if [[ -d "$previous" && ! -d "$SHARED_SUPPORT/build" ]]; then mv "$previous" "$SHARED_SUPPORT/build"; fi; rm -rf "$stage"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   local dep_path="$BUILD_DIR/librime-host/bin/rime_deployer"
-  rm -rf "$user_dir"
-  mkdir -p "$user_dir"
-  rm -rf "$SHARED_SUPPORT/build"
-  "$dep_path" --build "$user_dir" "$SHARED_SUPPORT"
-  cp -R "$user_dir/build" "$SHARED_SUPPORT/build"
+  mkdir -p "$stage/shared" "$stage/user"
+  # 不带旧 build，避免部署器误判为增量完成；失败时仍保留原来的预编译数据。
+  tar -C "$SHARED_SUPPORT" --exclude=./build -cf - . | tar -C "$stage/shared" -xf -
+  "$dep_path" --build "$stage/user" "$stage/shared"
+  test -s "$stage/user/build/luna_pinyin_extended.prism.bin"
+  test -s "$stage/user/build/luna_pinyin_extended.table.bin"
+  test -s "$stage/user/build/melt_eng.table.bin"
+  if [[ -d "$SHARED_SUPPORT/build" ]]; then mv "$SHARED_SUPPORT/build" "$previous"; fi
+  if ! mv "$stage/user/build" "$SHARED_SUPPORT/build"; then
+    if [[ -d "$previous" ]]; then mv "$previous" "$SHARED_SUPPORT/build"; fi
+    return 1
+  fi
+  rm -rf "$previous" "$stage"
+  trap - EXIT INT TERM
   echo "=== Prebuilt data written to $SHARED_SUPPORT/build ==="
-  ls -la "$SHARED_SUPPORT/build"
 }
 
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
-build_boost
-build_dep glog        "-DWITH_GFLAGS=OFF -DBUILD_TESTING=OFF -DWITH_GTEST=OFF"
-build_dep leveldb     "-DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF -DBUILD_SHARED_LIBS=OFF -DHAVE_CRC32C=OFF -DHAVE_SNAPPY=OFF -DHAVE_TCMALLOC=OFF"
-build_dep marisa-trie "-DBUILD_SHARED_LIBS=OFF -DENABLE_TOOLS=OFF -DBUILD_TESTING=OFF"
-build_dep opencc      "-DBUILD_SHARED_LIBS=OFF -DUSE_SYSTEM_MARISA=OFF -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DBUILD_OPENCC_TOOLS=OFF -DBUILD_OPENCC_DATA=OFF"
-build_dep yaml-cpp    "-DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF"
-build_librime
+case "${1:-}" in
+  "")
+    build_boost
+    build_dep glog -DWITH_GFLAGS=OFF -DBUILD_TESTING=OFF -DWITH_GTEST=OFF
+    build_dep leveldb -DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF -DBUILD_SHARED_LIBS=OFF -DHAVE_CRC32C=OFF -DHAVE_SNAPPY=OFF -DHAVE_TCMALLOC=OFF
+    build_dep marisa-trie -DBUILD_SHARED_LIBS=OFF -DENABLE_TOOLS=OFF -DBUILD_TESTING=OFF
+    build_dep opencc -DBUILD_SHARED_LIBS=OFF -DUSE_SYSTEM_MARISA=OFF -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DBUILD_OPENCC_TOOLS=OFF -DBUILD_OPENCC_DATA=OFF
+    build_dep yaml-cpp -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF
+    build_librime
+    ;;
+  --deploy-only) ;;
+  *) echo "usage: $0 [--deploy-only]" >&2; exit 2 ;;
+esac
 deploy
-
 echo "=== Done ==="

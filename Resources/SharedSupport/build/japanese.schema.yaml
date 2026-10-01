@@ -1,10 +1,10 @@
 __build_info:
   rime_version: 1.16.0
   timestamps:
-    default: 1785587421
-    default.custom: 1785691758
+    default: 1787144511
+    default.custom: 1787144511
     japanese.custom: 0
-    japanese.schema: 1785691758
+    japanese.schema: 1787144511
 engine:
   filters:
     - simplifier

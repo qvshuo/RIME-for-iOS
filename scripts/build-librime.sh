@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Build librime + dependencies for iOS and create xcframeworks.
 # Both a simulator (SIMULATORARM64) and a device (OS64) slice are built so the
@@ -16,30 +16,25 @@ BUILD_DIR="$ROOT/.build"
 INSTALL_DIR="$BUILD_DIR/install"
 FRAMEWORKS_DIR="$ROOT/Frameworks"
 
-IOS_CMAKE_DIR="${IOS_CMAKE_DIR:-/tmp/ios-cmake-4.6.0}"
+IOS_CMAKE_DIR="${IOS_CMAKE_DIR:-$BUILD_DIR/ios-cmake-4.6.0}"
 IOS_CMAKE="$IOS_CMAKE_DIR/ios.toolchain.cmake"
 PLATFORMS="${PLATFORMS:-SIMULATORARM64 OS64}"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-26.0}"
 
-# ios-cmake lives in /tmp by default, which the OS clears on reboot. Fetch it
-# when missing instead of failing.
+# 保留自定义工具链目录；默认缓存在项目内，重启后不必重新下载。
 ensure_toolchain() {
-  if [[ ! -f "$IOS_CMAKE" ]]; then
-    echo "=== ios-cmake toolchain not found at $IOS_CMAKE; downloading ==="
-    local tgz="/tmp/ios-cmake.tgz"
-    curl -sfL "https://github.com/leetal/ios-cmake/archive/refs/tags/4.6.0.tar.gz" -o "$tgz" || {
-      echo "error: failed to download ios-cmake 4.6.0" >&2
-      exit 1
-    }
-    rm -rf "$IOS_CMAKE_DIR"
-    tar -xzf "$tgz" -C /tmp
-    [[ -f "$IOS_CMAKE" ]] || { echo "error: $IOS_CMAKE not produced by tarball" >&2; exit 1; }
-  fi
+  [[ -f "$IOS_CMAKE" ]] && return
+  mkdir -p "$BUILD_DIR" "$IOS_CMAKE_DIR"
+  local archive
+  archive="$(mktemp "$BUILD_DIR/toolchain.XXXXXX")"
+  trap 'rm -f "$archive"' EXIT
+  curl --fail --location --retry 3 \
+    "https://github.com/leetal/ios-cmake/archive/refs/tags/4.6.0.tar.gz" -o "$archive"
+  tar -xzf "$archive" --strip-components=1 -C "$IOS_CMAKE_DIR"
+  rm -f "$archive"
+  trap - EXIT
+  [[ -f "$IOS_CMAKE" ]] || { echo "error: missing $IOS_CMAKE" >&2; exit 1; }
 }
-ensure_toolchain
-
-# Which deps to build
-DEPS="glog leveldb marisa-trie opencc yaml-cpp"
 
 export BOOST_ROOT="$DEPS_DIR/boost-1.89.0"
 
@@ -75,12 +70,9 @@ set_platform() {
     -DBUILD_SHARED_LIBS=OFF
   )
 
-  mkdir -p "$INSTALL_DIR/$p" "$FRAMEWORKS_DIR"
+  mkdir -p "$INSTALL_DIR/$p/include" "$FRAMEWORKS_DIR"
 }
 
-# ------------------------------------------------------------------
-# 1. Boost
-# ------------------------------------------------------------------
 build_boost() {
   echo "=== Building Boost for $PLATFORM ==="
   cd "$BOOST_ROOT"
@@ -106,89 +98,16 @@ build_boost() {
 
   mkdir -p "$INSTALL_DIR/$PLATFORM/lib"
   cp "stage-$PLATFORM/lib/libboost_"*.a "$INSTALL_DIR/$PLATFORM/lib/"
-  cp -R "$BOOST_ROOT/boost" "$INSTALL_DIR/$PLATFORM/include/" 2>/dev/null || true
+  cp -R "$BOOST_ROOT/boost" "$INSTALL_DIR/$PLATFORM/include/"
 }
 
-# ------------------------------------------------------------------
-# 2. glog
-# ------------------------------------------------------------------
-build_glog() {
-  echo "=== Building glog for $PLATFORM ==="
-  SRC="$DEPS_DIR/glog"
-  BUILD="$BUILD_DIR/glog-$PLATFORM"
-  cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
-    -DWITH_GFLAGS=OFF \
-    -DBUILD_TESTING=OFF \
-    -DWITH_GTEST=OFF
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
+build_dep() {
+  local name="$1"
+  shift
+  cmake -S "$DEPS_DIR/$name" -B "$BUILD_DIR/$name-$PLATFORM" "${CMAKE_ARGS[@]}" "$@"
+  cmake --build "$BUILD_DIR/$name-$PLATFORM" --target install -j"$(sysctl -n hw.ncpu)"
 }
 
-# ------------------------------------------------------------------
-# 3. leveldb
-# ------------------------------------------------------------------
-build_leveldb() {
-  echo "=== Building leveldb for $PLATFORM ==="
-  SRC="$DEPS_DIR/leveldb"
-  BUILD="$BUILD_DIR/leveldb-$PLATFORM"
-  cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
-    -DLEVELDB_BUILD_TESTS=OFF \
-    -DLEVELDB_BUILD_BENCHMARKS=OFF \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DHAVE_CRC32C=OFF \
-    -DHAVE_SNAPPY=OFF \
-    -DHAVE_TCMALLOC=OFF
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
-}
-
-# ------------------------------------------------------------------
-# 4. marisa-trie
-# ------------------------------------------------------------------
-build_marisa() {
-  echo "=== Building marisa-trie for $PLATFORM ==="
-  SRC="$DEPS_DIR/marisa-trie"
-  BUILD="$BUILD_DIR/marisa-$PLATFORM"
-  cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DENABLE_TOOLS=OFF \
-    -DBUILD_TESTING=OFF
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
-}
-
-# ------------------------------------------------------------------
-# 5. opencc
-# ------------------------------------------------------------------
-build_opencc() {
-  echo "=== Building opencc for $PLATFORM ==="
-  SRC="$DEPS_DIR/opencc"
-  BUILD="$BUILD_DIR/opencc-$PLATFORM"
-  cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DUSE_SYSTEM_MARISA=OFF \
-    -DSHARE_INSTALL_PREFIX=SharedSupport \
-    -DBUILD_DOCUMENTATION=OFF \
-    -DENABLE_GTEST=OFF \
-    -DBUILD_OPENCC_TOOLS=OFF \
-    -DBUILD_OPENCC_DATA=OFF
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
-}
-
-# ------------------------------------------------------------------
-# 6. yaml-cpp
-# ------------------------------------------------------------------
-build_yaml_cpp() {
-  echo "=== Building yaml-cpp for $PLATFORM ==="
-  SRC="$DEPS_DIR/yaml-cpp"
-  BUILD="$BUILD_DIR/yaml-cpp-$PLATFORM"
-  cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}" \
-    -DYAML_CPP_BUILD_TESTS=OFF \
-    -DYAML_CPP_BUILD_TOOLS=OFF \
-    -DBUILD_SHARED_LIBS=OFF
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
-}
-
-# ------------------------------------------------------------------
-# 7. librime
-# ------------------------------------------------------------------
 build_librime() {
   echo "=== Building librime for $PLATFORM ==="
   SRC="$RIME_ROOT"
@@ -204,18 +123,16 @@ build_librime() {
     -DBoost_NO_BOOST_CMAKE=TRUE \
     -DCMAKE_PREFIX_PATH="$INSTALL_DIR/$PLATFORM" \
     -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR/$PLATFORM"
-  cmake --build "$BUILD" --target install -j$(sysctl -n hw.ncpu)
+  cmake --build "$BUILD" --target install -j"$(sysctl -n hw.ncpu)"
 }
 
-# ------------------------------------------------------------------
-# 8. Package each library as a static xcframework
-# ------------------------------------------------------------------
 make_xcframework() {
   local name=$1
   local lib=$2
   local output="$FRAMEWORKS_DIR/$name.xcframework"
 
-  rm -rf "$output"
+  local staged_output="$BUILD_DIR/$name.xcframework"
+  rm -rf "$staged_output"
 
   if [[ -d "$INSTALL_DIR/SIMULATORARM64/lib/$lib" || -f "$INSTALL_DIR/SIMULATORARM64/lib/$lib" ]]; then
     local sim_lib="$INSTALL_DIR/SIMULATORARM64/lib/$lib"
@@ -236,28 +153,34 @@ make_xcframework() {
     args+=(-library "$dev_lib")
   fi
 
-  xcodebuild -create-xcframework "${args[@]}" -output "$output"
+  [[ ${#args[@]} -gt 0 ]] || { echo "error: no slices for $name" >&2; return 1; }
+  xcodebuild -create-xcframework "${args[@]}" -output "$staged_output"
+  rm -rf "$output"
+  mv "$staged_output" "$output"
 }
 
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
-for PLATFORM in $PLATFORMS; do
-  set_platform "$PLATFORM"
-  echo "=== Building for $PLATFORM ($SDK, arch $ARCH) ==="
+case "${1:-}" in
+  ""|--package-only) ;;
+  *) echo "usage: $0 [--package-only]" >&2; exit 2 ;;
+esac
 
-  build_boost
-  for dep in $DEPS; do
-    case $dep in
-      glog) build_glog ;;
-      leveldb) build_leveldb ;;
-      marisa-trie) build_marisa ;;
-      opencc) build_opencc ;;
-      yaml-cpp) build_yaml_cpp ;;
-    esac
+"$ROOT/scripts/verify-dependencies.sh" --sources
+
+if [[ "${1:-}" != --package-only ]]; then
+  ensure_toolchain
+  for PLATFORM in $PLATFORMS; do
+    set_platform "$PLATFORM"
+    echo "=== Building for $PLATFORM ($SDK, arch $ARCH) ==="
+
+    build_boost
+    build_dep glog -DWITH_GFLAGS=OFF -DBUILD_TESTING=OFF -DWITH_GTEST=OFF
+    build_dep leveldb -DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF -DHAVE_CRC32C=OFF -DHAVE_SNAPPY=OFF -DHAVE_TCMALLOC=OFF
+    build_dep marisa-trie -DENABLE_TOOLS=OFF -DBUILD_TESTING=OFF
+    build_dep opencc -DUSE_SYSTEM_MARISA=OFF -DSHARE_INSTALL_PREFIX=SharedSupport -DBUILD_DOCUMENTATION=OFF -DENABLE_GTEST=OFF -DBUILD_OPENCC_TOOLS=OFF -DBUILD_OPENCC_DATA=OFF
+    build_dep yaml-cpp -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF
+    build_librime
   done
-  build_librime
-done
+fi
 
 # Package. make_xcframework picks up whatever slices exist in INSTALL_DIR, so it
 # runs once after all platforms have been built.
@@ -272,4 +195,5 @@ make_xcframework boost_regex    libboost_regex.a
 # boost_system is header-only since Boost 1.82; no separate library.
 make_xcframework boost_atomic   libboost_atomic.a
 
+"$ROOT/scripts/verify-dependencies.sh" --record
 echo "=== Done. Frameworks in $FRAMEWORKS_DIR ==="

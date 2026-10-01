@@ -145,10 +145,9 @@ extension RimeContext {
     public func destroySession() {
         lock.lock()
         defer { lock.unlock() }
-        if literalComposition != nil {
-            literalComposition = nil
-            setContext(candidates: [], preedit: "", highlighted: 0)
-        }
+        literalComposition = nil
+        commitText = ""
+        setContext(candidates: [], preedit: "", highlighted: 0)
         guard session != 0 else { return }
         _ = rimeAPI.destroy_session!(session)
         session = 0

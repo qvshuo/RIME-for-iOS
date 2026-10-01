@@ -1,6 +1,9 @@
 import SwiftUI
+import UIKit
 
 public struct Theme {
+    public var panelBackground: Color { Color(uiColor: .secondarySystemGroupedBackground) }
+
     public let keyBackground: Color
     public let specialKeyBackground: Color
     public let pressedKeyBackground: Color

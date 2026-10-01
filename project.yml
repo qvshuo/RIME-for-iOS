@@ -7,7 +7,7 @@ options:
   defaultConfig: Release
 settings:
   base:
-    SWIFT_VERSION: "6.2"
+    SWIFT_VERSION: "6.0"
     TARGETED_DEVICE_FAMILY: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
     # 版本号唯一来源：两个 target 的 Info.plist 引用 $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION)。

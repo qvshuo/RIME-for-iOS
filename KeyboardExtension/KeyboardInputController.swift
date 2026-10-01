@@ -9,7 +9,8 @@ final class KeyboardInputController: UIInputViewController {
     private let rimeContext = RimeContext.shared
     private let inputState = InputState()
     private let sessionID = UUID()
-    private var pendingLogExport: UINavigationController?
+    private var documentID: UUID?
+    private var needsDocumentReset = false
     private var displayedPreedit: String = ""
     private var hostingController: UIHostingController<KeyboardView>?
     private var doubleSpaceTracker = DoubleSpaceTracker(interval: 0.35)
@@ -48,14 +49,17 @@ final class KeyboardInputController: UIInputViewController {
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        refreshDocumentState()
         refreshInputTextState()
         refreshKeyboardContext()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        inputState.isVisible = true
         resetDoubleSpaceState()
         KeyboardDiagnostics.shared.record("键盘显示")
+        refreshDocumentState()
         refreshInputTextState()
         refreshKeyboardContext()
         // viewDidLoad 挂载会有巨大布局位移，须在此挂载；幂等防重复 addChild / 约束累积。
@@ -79,6 +83,30 @@ final class KeyboardInputController: UIInputViewController {
         }
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        inputState.isVisible = false
+        KeyboardDiagnostics.shared.record("键盘隐藏")
+        resetDoubleSpaceState()
+    }
+
+    /// 切换输入框时，UIKit 可能返回 nil；将其视作身份变化，不能拒绝后续输入。
+    private func refreshDocumentState() {
+        let proxy = textDocumentProxy as? NSObject
+        let current = proxy?.value(forKey: "documentIdentifier") as? UUID
+        if documentID != current {
+            needsDocumentReset = true
+            displayedPreedit = ""
+            resetDoubleSpaceState()
+        }
+        documentID = current
+        // 维护持有引擎锁时不阻塞主线程；恢复输入前再丢弃旧输入框的组合。
+        if needsDocumentReset, !inputState.isSyncing {
+            rimeContext.reset()
+            needsDocumentReset = false
+        }
+    }
+
     private func refreshKeyboardContext() {
         let type = textDocumentProxy.keyboardType
         let returnType = textDocumentProxy.returnKeyType
@@ -97,7 +125,8 @@ final class KeyboardInputController: UIInputViewController {
     }
 
     private func refreshInputTextState() {
-        inputState.hasInputText = hasText(in: textDocumentProxy)
+        let hasText = hasText(in: textDocumentProxy)
+        if inputState.hasInputText != hasText { inputState.hasInputText = hasText }
     }
 
     private func createKeyboardView() {
@@ -126,58 +155,28 @@ final class KeyboardInputController: UIInputViewController {
 
     private func exportLogs() {
         guard let presenter = hostingController,
-              presenter.presentedViewController == nil, inputState.logExportHeight == nil else { return }
+              presenter.presentedViewController == nil else { return }
         do {
             let archive = try KeyboardDiagnostics.shared.export()
             let activity = UIActivityViewController(activityItems: [archive], applicationActivities: nil)
-            activity.navigationItem.rightBarButtonItem = UIBarButtonItem(
-                systemItem: .close,
-                primaryAction: UIAction { [weak self] _ in self?.dismissLogExport() }
+            activity.modalPresentationStyle = .popover
+            activity.popoverPresentationController?.sourceView = presenter.view
+            activity.popoverPresentationController?.delegate = self
+            activity.popoverPresentationController?.permittedArrowDirections = []
+            // 分享面板沿用日志页尺寸，不改变系统键盘容器的高度。
+            activity.preferredContentSize = presenter.view.bounds.size
+            activity.popoverPresentationController?.sourceRect = CGRect(
+                x: presenter.view.bounds.midX, y: presenter.view.bounds.maxY, width: 1, height: 1
             )
-            let navigation = UINavigationController(rootViewController: activity)
-            navigation.modalPresentationStyle = .popover
-            navigation.popoverPresentationController?.sourceView = presenter.view
-            navigation.popoverPresentationController?.delegate = self
-            navigation.popoverPresentationController?.permittedArrowDirections = []
-            activity.completionWithItemsHandler = { [weak self] _, _, _, _ in
-                Task { @MainActor in self?.dismissLogExport() }
-            }
-            // 扩展的分享界面只能使用自身区域，导出时临时扩大内在高度。
-            let screenHeight = view.window?.windowScene?.effectiveGeometry.coordinateSpace.bounds.height ?? view.bounds.height
-            pendingLogExport = navigation
-            inputState.logExportHeight = max(view.bounds.height, screenHeight * 0.75)
-            view.setNeedsLayout()
+            presenter.present(activity, animated: true)
         } catch {
             KeyboardDiagnostics.shared.record("日志导出失败：\(error.localizedDescription)")
         }
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        guard let activity = pendingLogExport else { return }
-        guard let height = inputState.logExportHeight else {
-            pendingLogExport = nil
-            return
-        }
-        guard view.bounds.height >= height - 1 else { return }
-        pendingLogExport = nil
-        // 必须等扩展完成自适应布局，否则系统弹出框仍采用原来的键盘高度。
-        activity.preferredContentSize = CGSize(width: view.bounds.width, height: height)
-        activity.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 1, height: 1)
-        hostingController?.present(activity, animated: true)
-    }
-
-    private func dismissLogExport() {
-        guard let presenter = hostingController, presenter.presentedViewController != nil else {
-            inputState.logExportHeight = nil
-            return
-        }
-        presenter.dismiss(animated: true) { [weak self] in
-            self?.inputState.logExportHeight = nil
-        }
-    }
-
     private func handleKeyAction(_ action: KeyAction) {
+        guard inputState.isVisible else { return }
+        refreshDocumentState()
         var handled = false
         var preeditBefore: String = ""
         switch action {
@@ -369,13 +368,5 @@ private struct DoubleSpaceTracker {
 extension KeyboardInputController: UIPopoverPresentationControllerDelegate {
     func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
         .none
-    }
-
-    func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) {
-        inputState.logExportHeight = nil
-    }
-
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        inputState.logExportHeight = nil
     }
 }

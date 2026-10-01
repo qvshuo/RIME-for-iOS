@@ -36,7 +36,7 @@ Bundle IDs: `art.anjing.rimeios`, `art.anjing.rimeios.keyboard`; App Group: `gro
 
 ## Build, test and package
 
-Minimum iOS 26, iPhone only, Swift 6.2. Edit `project.yml`, then regenerate:
+Minimum iOS 26, iPhone only. Xcode 27 / Swift 6.4 compiler, Swift 6 language mode; SwiftPM tools 6.4. Edit `project.yml`, then regenerate:
 
 ```sh
 xcodegen generate --project .
@@ -46,9 +46,7 @@ xcodebuild test -project RIMEForiOS.xcodeproj -scheme RIMEForiOS \
 xcodebuild -project RIMEForiOS.xcodeproj -scheme RIMEForiOS -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath build/Release \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
-mkdir -p build/stage/Payload
-cp -R build/Release/Build/Products/Release-iphoneos/RIMEForiOS.app build/stage/Payload/
-(cd build/stage && zip -rqy -X ../RIME-for-iOS-unsigned.ipa Payload)
+./scripts/package-ipa.sh
 ```
 
 Binary simulator slices are arm64. Swift Testing results follow an initial XCTest report of zero tests. For development App Group access, use valid signing and `ENTITLEMENTS_ALLOWED=YES`; unsigned/self-signed installations normally use private containers.
@@ -86,11 +84,11 @@ State ownership:
 - Never unlink LevelDB LOCK files. Kernel lock lifetime protects the existing inode.
 - Maintenance runs on one serial queue, including deferred session cleanup. Owner tokens prevent an old controller from destroying a replacement controller's session. Recreate only after checking native composition, literal composition and pending commit under the lock.
 
-Bundled data is managed upstream, not hand-edited. Enhanced files track qvshuo/luna-pinyin-enhanced `7c47d6d` (2026-08-19); Japanese files track gkovacs/rime-japanese `4c1e651`. Preset pinyin/schema/dictionary files track rime/rime-luna-pinyin `56b934b`; essay/symbols come from librime's minimal data. default.yaml only changes schema_list to existing luna_pinyin/luna_pinyin_simp and page_size to 9. The enhanced custom patch also references Japanese. Desktop frontend custom files remain verbatim and inert on iOS. OpenCC data comes from ver.1.1.9; lm_sc.gram is upstream's committed grammar. List patches require @N or /+/ /= operators.
+Bundled data is managed upstream, not hand-edited. Enhanced files track qvshuo/luna-pinyin-enhanced `6bd91c9` (2026-09-27); Japanese files track gkovacs/rime-japanese `4c1e651`. Preset pinyin/schema/dictionary files track rime/rime-luna-pinyin `56b934b`; essay/symbols come from librime's minimal data. default.yaml only changes schema_list to existing luna_pinyin/luna_pinyin_simp and page_size to 9. The enhanced custom patch also references Japanese. Desktop frontend custom files remain verbatim and inert on iOS. OpenCC data comes from ver.1.1.9; lm_sc.gram is upstream's committed grammar. List patches require @N or /+/ /= operators.
 
 Reference Squirrel is the latest stable **1.1.2**, commit `876adeb`; its librime pin is **1.16.0**, `a251145d`. The build clone uses the same pin. Update binaries/data only deliberately with a stable release and validate both platforms. Latest frontend code does not imply a need to upgrade librime.
 
-Optional scripts expect `../librime` and its dependencies. build-librime.sh enables merged plugins, iOS-compatible Lua and disables cross-compiled tools. Preserve OpenCC's BUILD_OPENCC_DATA/TOOLS guards when updating its sources. build-prebuilt-data.sh clears SharedSupport/build **before** deploying so incremental skipping cannot leave an empty result. Do not regenerate dictionary assets for a naming-only change. OpenCC 1.1.9 was rebuilt only to remove an embedded old working-directory path; SHARE_INSTALL_PREFIX=SharedSupport keeps future fallback paths independent of the machine.
+Optional scripts default to `../librime`; use RIME_ROOT for an isolated clone at the commits in Frameworks/versions.json. build-librime.sh rejects mismatched source pins. verify-dependencies.sh --binaries checks committed slices without upstream sources. build-librime.sh enables merged plugins, iOS-compatible Lua and disables cross-compiled tools. Preserve OpenCC's BUILD_OPENCC_DATA/TOOLS guards when updating its sources. build-prebuilt-data.sh deploys a source-only staging copy and replaces SharedSupport/build only after validating output; failed deployment preserves old data. Do not regenerate dictionary assets for a naming-only change. OpenCC remains 1.1.9; both slices were rebuilt with the release dependency baseline. SHARE_INSTALL_PREFIX=SharedSupport keeps future fallback paths independent of the machine.
 
 ## Input and appearance
 
@@ -99,10 +97,11 @@ Optional scripts expect `../librime` and its dependencies. build-librime.sh enab
 - Backspace with no preedit goes directly to the proxy. Do not add extra context re-reads to the repeat path. Double-space punctuation only follows two literal spaces within 0.35 s; candidate commits and keyboard activation reset it.
 - Default requests Chinese; asciiCapable requests English. Other host types fall back to Chinese. Number/symbol pages remain manual layout choices. Return uses the host label without preedit, otherwise ⏎; highlight only when host text exists without preedit.
 - SwiftUI colorScheme follows the host. No controller heuristic or pinned override style. Solid keycaps and an opaque preview bubble; dark key overlays assume a #2B2B2B system backdrop. Theme blend tests check this assumption.
-- Input/log height is 266 pt, sync 480 pt, inline editing 580 pt. UIInputView.allowsSelfSizing plus hosting intrinsicContentSize drives system sizing. Mount hosting in viewWillAppear to avoid a loading layout shift. Log export alone temporarily uses 75% of the scene height.
+- Host document identity changes discard old composition before processing new input; read the public documentIdentifier through Objective-C because UIKit can temporarily return nil. Hidden controllers reject input and stop log polling while retaining credential drafts. Background context snapshots carry a publication revision and cannot overwrite newer snapshots.
+- Input height is 266 pt, sync/log/export 480 pt, inline editing 580 pt. UIInputView.allowsSelfSizing plus hosting intrinsicContentSize drives system sizing. Mount hosting in viewWillAppear to avoid a loading layout shift. Log export keeps the log page height.
 - Key height 45, row gap 11, horizontal padding 7. RowLayoutMath keeps geometry pure: fixed function keys, elastic space, return-label borrowing, aligned z/s and m/k. Widths/gaps determine actual frames; don't replace them with arbitrary weights.
 - Candidate scroll views hide scroll edge blur. Collapsed candidates use natural widths and LazyHStack; expanded candidates use a lazy grid and a stable snapshot. The initial native page has 9 candidates; expansion fetches up to 77. First-row alignment uses the actual selected/unselected cell height. No candidate comments are rendered.
-- All menu buttons align to q and offer only the other two panels. Credential editing stays in a vertical title/value list with one Done button, a visible password and active-row Paste/Clear. Avoid native text fields that summon another keyboard inside the extension.
+- All menu buttons align to q and offer only the other two panels. Credential editing stays in a vertical title/value list with one Done button, a visible password and active-row Paste/Clear. Server, username and password carry red required markers; path and installation ID use defaults when empty. Avoid native text fields that summon another keyboard inside the extension.
 
 ## Synchronization and diagnostics
 
@@ -112,7 +111,7 @@ Manual sync uses a process gate, unique staging directory and at most two parall
 
 Engine logs: Logs/engine.log. Keyboard logs: Logs/Keyboard/keyboard.log. BoundedLogFile serializes writes; each has one current and one previous file at 256 KiB each, including oversized legacy truncation. Native logging starts at warning and avoids independent unbounded glog files. Never record keystrokes/passwords. PID/session markers indicate incomplete cleanup, not proof of a crash.
 
-The log view reads the latest 8 KiB per source once per second in a view-scoped task and stops when absent. No manual refresh/clear APIs. Export snapshots four files (roughly 1 MiB), then presents an expanded UIKit navigation popover with Close. Wait for layout before presentation and restore height on dismissal. Keyboard extensions cannot present outside their system-owned region; confirmationDialog/text selection menus can invoke unavailable extension features. Deletion confirmation stays inline.
+The log view reads the latest 8 KiB per source once per second in a view-scoped task and stops when absent or the controller is hidden. Only changed tails are published. No manual refresh/clear APIs. Export snapshots four files (roughly 1 MiB), then presents a native UIKit activity popover at the log page height, without an extra navigation wrapper or custom Close button. Sharing does not resize the keyboard container. Keyboard extensions cannot present outside their system-owned region; confirmationDialog/text selection menus can invoke unavailable extension features. Deletion confirmation stays inline.
 
 ## Verification and scope
 

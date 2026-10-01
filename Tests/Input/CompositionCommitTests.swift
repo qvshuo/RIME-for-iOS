@@ -7,7 +7,33 @@ import KeyboardModels
 @testable import RimeEngine
 
 @MainActor
+@Suite(.serialized)
 struct CompositionCommitTests {
+    @Test("排队的旧引擎快照不能覆盖新组合")
+    func queuedSnapshotIsDiscarded() async {
+        let engine = RimeContext.shared
+        let queued = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            engine.lock.lock()
+            engine.setContext(candidates: [Candidate(text: "旧")], preedit: "old", highlighted: 0)
+            engine.lock.unlock()
+            queued.signal()
+        }
+        func snapshotQueued() -> Bool { queued.wait(timeout: .now() + 2) == .success }
+        #expect(snapshotQueued())
+        engine.lock.withLock {
+            engine.setContext(candidates: [Candidate(text: "新")], preedit: "new", highlighted: 0)
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(engine.preedit == "new")
+        #expect(engine.candidates.map(\.text) == ["新"])
+        engine.lock.withLock {
+            engine.setContext(candidates: [], preedit: "", highlighted: 0)
+        }
+    }
+
     @Test("大写混合组合仅显式确认时提交，兼容原生 RIME")
     func literalCompositionAndNativeCommits() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

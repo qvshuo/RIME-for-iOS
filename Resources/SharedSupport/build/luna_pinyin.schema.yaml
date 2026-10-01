@@ -1,14 +1,14 @@
 __build_info:
   rime_version: 1.16.0
   timestamps:
-    default: 1785587421
-    default.custom: 1785691758
+    default: 1787144511
+    default.custom: 1787144511
     grammar: 0
-    luna_pinyin.custom: 1785691758
-    luna_pinyin.schema: 1785591350
-    pinyin: 1785591350
+    luna_pinyin.custom: 1787144511
+    luna_pinyin.schema: 1787144511
+    pinyin: 1787144511
     pinyin.custom: 0
-    symbols: 1785330288
+    symbols: 1787144511
     symbols.custom: 0
 custom_phrase:
   db_class: stabledb

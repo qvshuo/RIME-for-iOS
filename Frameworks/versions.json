@@ -1,0 +1,39 @@
+{
+  "squirrel": "1.1.2",
+  "librime": "1.16.0",
+  "boost": "1.89.0",
+  "lua": "5.4.8",
+  "sources": {
+    ".": "a251145d3aafa33871824a40bbec04c966bd8b56",
+    "deps/glog": "7b134a5c82c0c0b5698bb6bf7a835b230c5638e4",
+    "deps/googletest": "f8d7d77c06936315286eb55f8de22cd23c188571",
+    "deps/leveldb": "99b3c03b3284f5886f9ef9a4ef703d57373e61be",
+    "deps/leveldb/third_party/benchmark": "bf585a2789e30585b4e3ce6baf11ef2750b54677",
+    "deps/leveldb/third_party/googletest": "c27acebba3b3c7d94209e0467b0a801db4af73ed",
+    "deps/marisa-trie": "3e87d53b78e15f2f43783d5e376561a8c9722051",
+    "deps/opencc": "556ed22496d650bd0b13b6c163be9814637970ae",
+    "deps/yaml-cpp": "2f86d13775d119edbb69af52e5f566fd65c6953b",
+    "plugins/librime-lua": "68f9c364a2d25a04c7d4794981d7c796b05ab627",
+    "plugins/librime-octagram": "dfcc15115788c828d9dd7b4bff68067d3ce2ffb8"
+  },
+  "binaries": {
+    "Frameworks/boost_atomic.xcframework/ios-arm64/libboost_atomic.a": "bbdb9c3318953900401e4b7b6951e1c3f00ec2738404293a3ead1931acd60611",
+    "Frameworks/boost_atomic.xcframework/ios-arm64-simulator/libboost_atomic.a": "cb7ff810578a4e37114088662795d5b1fe6d1ad10e5e0b6ce1f0e7e530125153",
+    "Frameworks/boost_filesystem.xcframework/ios-arm64/libboost_filesystem.a": "0eb1989e3d93a81d41bece8bae71027fe40b1aa98400f05da433cc44a178b86b",
+    "Frameworks/boost_filesystem.xcframework/ios-arm64-simulator/libboost_filesystem.a": "44fe7a424a808e7330578eab0cfaf1a8dea8879592a337f78a4c87a021d71abd",
+    "Frameworks/boost_regex.xcframework/ios-arm64/libboost_regex.a": "b2bff31d27e93ac00d51349d7d299850476895a35f099f8e075f21770bf0fdea",
+    "Frameworks/boost_regex.xcframework/ios-arm64-simulator/libboost_regex.a": "d8a9b453217f9a68da07f2c1e1097762d82b60044ef1c23de208643b0728eda3",
+    "Frameworks/libglog.xcframework/ios-arm64/libglog.a": "db732061df066443dc78677191639c432e4184f4eb32473bcd10b5724123fe07",
+    "Frameworks/libglog.xcframework/ios-arm64-simulator/libglog.a": "ffa9a95233f1d0b64f1110a2955b4b6244bdf231bc0aaca81eae635119566cab",
+    "Frameworks/libleveldb.xcframework/ios-arm64/libleveldb.a": "f9bf4fb8a232e4a4bb6c61ed76b6d2461e1a57846a6c622b99717e21ae5ec59f",
+    "Frameworks/libleveldb.xcframework/ios-arm64-simulator/libleveldb.a": "4809e33a3e30b2d32bd31ea4ec9aff80df53b8c2baaf71fe5857969eb739ad86",
+    "Frameworks/libmarisa.xcframework/ios-arm64/libmarisa.a": "8b1e250437959f6a5336724901e4f47cd6f218fd235269e8d8a5abd1052ebe1f",
+    "Frameworks/libmarisa.xcframework/ios-arm64-simulator/libmarisa.a": "d498e2132116e03e2bdc6d9ec8f6648a780d50fb06c0b682be5d9b2d35055da9",
+    "Frameworks/libopencc.xcframework/ios-arm64/libopencc.a": "bbc923441b2addc8387b156708a78656e27f77ac23bd91a1e17ea893fac5208c",
+    "Frameworks/libopencc.xcframework/ios-arm64-simulator/libopencc.a": "ad86947eef40e7d651da3a4f78199bf34390f2e73223d805ba6b8434c4721801",
+    "Frameworks/librime.xcframework/ios-arm64/librime.a": "014b5eb68ddc5f6b705e4cfc859c59c1da914b278958b63738e85a9ff113dc92",
+    "Frameworks/librime.xcframework/ios-arm64-simulator/librime.a": "92774d9bb5ae0250639e274a84bd676472cbe7c8930bde518394999613106376",
+    "Frameworks/libyaml-cpp.xcframework/ios-arm64/libyaml-cpp.a": "45b34cb79943882a312ef00f592d42ccea1cf092b0ead42766294b028d9a44de",
+    "Frameworks/libyaml-cpp.xcframework/ios-arm64-simulator/libyaml-cpp.a": "3f2050d197f5faf6ecd9784c3d8c45033bee1e324f344f9135831ff1b5b00ac0"
+  }
+}

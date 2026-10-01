@@ -1,27 +1,54 @@
 # 代码复审：RIME for iOS 2.0.0
 
-本轮完成品牌、工程与模块更名，整理注释和核心测试，并根据最新 fcitx5-ios 与 Squirrel 正式版本重写[评估报告](docs/input-method-comparison.md)。没有引入多引擎、撤销历史或扩展内部署。
+本轮保持版本 **2.0.0（16）** 和现有功能范围。借鉴 fcitx5-ios 的输入框隔离、可见期门禁及等值状态发布；没有复制 GPL 业务代码、引入多引擎、扩大候选上限或增加运行时部署。
 
-## 命名和结构
+## 输入与性能
 
-- 显示名统一为 RIME for iOS；工程和应用目标 RIMEForiOS，扩展 RIMEKeyboard。
-- 物理目录 App、KeyboardExtension、Packages、Tests 按职责分开。Models/Sync 改为 KeyboardModels/RimeSync；测试由原来的 UITests 名称纠正为 RIMECoreTests，并按领域分组。
-- 主应用视图 SetupView，宿主入口 KeyboardInputController，输入状态机 KeyboardInputModel，目录入口 RimePaths。C 插件桥改为 rime_ios_configure_modules / RimeEngineBridge.h。
-- 新 bundle/App Group ID、目录、日志、诊断导出名、CI 产物和 RIME distribution 信息一致。设备默认 ID 改为 iPhone，不用产品名标识设备。
-- 历史构建、旧引擎构建缓存、用户原始日志及旧生成 scheme 归档在工作区父级 archives/2026-10-01，原始日志字节内容未修改。历史 Git 提交及远端仓库地址不重写。英文词典中的正常单词继续按上游保留。
+- 宿主字段身份变化时丢弃旧组合，避免同类型 UITextView 切换后串词。通过 Objective-C 读取公开的 documentIdentifier，兼容 UIKit 返回空值；空值不阻断按键。
+- 隐藏控制器拒绝输入并暂停日志任务；保留 SwiftUI 草稿状态，避免拆卸视图丢失未保存凭据。
+- 后台上下文快照携带发布代次，旧排队结果不能覆盖新输入。发布代次使用独立 Mutex，主线程不因此等待后台引擎维护锁。
+- 候选、preedit、高亮、宿主 hasText 和日志尾部只在值变化时发布。原来的候选惰性渲染、字体缓存和固定展开上限保留。
+- 会话销毁同步清空候选、字面组合及未消费提交；保留 owner 令牌和维护队列的旧控制器保护。
+- 字母/数字/符号标签采用 identity 内容切换并隔离动画事务，字符键按压与预览即时反馈，退格保留 50 ms 背景反馈。
 
-## 注释和测试
+## 界面
 
-删去对显然代码的复述、重复架构说明和已废弃实现的描述。保留静态插件、C 指针生命期、一次性 commit、marked text 清理、引擎锁/取消、懒加载快照和内存上限等必要原因。平台内存数字改为历史观测，避免把某台设备结果描述成系统保证。
+主应用与键盘面板采用系统 SF 字体、语义内容卡片、18 pt 圆角和原生 Liquid Glass 操作控件；玻璃用于菜单/按钮，候选和日志内容不加遮挡。沿用主应用黑色（深色模式为适应色）状态文案与仅图标着色。
 
-输入路由与布局重复情形合并为数据驱动检查；删除简单别名和固定提示文案断言。核心验证和取舍见 [testing.md](docs/testing.md)。未以删除测试来绕过功能错误。
+日志移除页脚，导出按钮居中放到底部。UIActivityViewController 直接以系统 popover 呈现，去掉自定义导航外壳/关闭按钮，系统更多页面不再叠加关闭控件。分享沿用日志页 480 pt 高度，不再临时调整键盘容器。
 
-## 安装和数据边界
+同步页输入行没有特殊蓝色背景，保留统一字段卡片、原位置内编辑及总完成按钮。输入键盘与同步编辑高度保持不变，日志与分享统一采用同步页高度；候选栏和菜单选项保持原有逻辑。
 
-新标识符会创建独立应用。旧私有词库、凭据无法自动跨容器读取；升级前先使用旧键盘同步，再配置新键盘并同步。两个设备应使用不同安装 ID。保留 librime 1.16.0 和上游字典数据；OpenCC 1.1.9 的两个切片重新编译，移除嵌入的旧构建目录，脚本使用 SHARE_INSTALL_PREFIX=SharedSupport，也不改变手动 WebDAV 协议。
+设计依据：[Apple Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/liquid-glass)、[Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)。使用 Xcode 27 / Swift 6.4 与 iOS 27 SDK；最低 iOS 26，Swift 6 语言模式。
 
-## 验证
+## 依赖与脚本
 
-41 项核心测试通过（14 个 suite，原 69 项同类情形合并），iPhone Release 构建通过。新 bundle ID 在系统设置中成功添加，切换器选择及 4 项产品 UI 流程共 5 项临时宿主测试通过：混合预输入空格确认、候选展开/选择、同步草稿隔离、菜单、日志自动更新和分享关闭恢复。系统最近使用键盘确认为 art.anjing.rimeios.keyboard。主应用标题/启用状态/版本截图已核对；另采集真实扩展的深浅色候选截图更新 README。
+逐项核对 Squirrel 1.1.2 的下载脚本、librime gitlink、发布 workflow 和实际发布包版本记录。核心库保持 librime 1.16.0；Lua/octagram 从更新的浮动提交调整到发行包指定提交，9 个依赖库的两平台切片全部重新编译。
 
-本地生成 RIME-for-iOS-2.0.0-unsigned.ipa，检查 zip 完整性、应用/扩展标识、2.0.0（16）版本、扩展主类及预构建数据。验证记录在忽略的 build/review/2.0.0/。OpenCC 切片更新后重新通过 41 项核心测试和 Release 构建，并在实际扩展中复查深浅主题中文候选。模拟器为 iOS 26.5；mock 传输和模拟器不能替代自签真机、真实 WebDAV 和持续内存测量。
+增强词库更新至 `6bd91c9`（2026-09-27），保持上游原文并重新生成预编译数据。其他字库源没有更近提交，语法模型逐字节一致。完整差异、明确未锁定/未引入的组件见 [dependencies.md](docs/dependencies.md)，源码提交和静态库哈希见 [versions.json](Frameworks/versions.json)。
+
+脚本启用严格错误处理、去掉字符串拆分的 CMake 参数和重复依赖构建函数。工具链缓存在项目内，下载失败不删除自定义目录；先成功封装再替换 xcframework。词库在暂存目录部署、检查关键文件后替换，失败保留旧数据；可仅部署或重新封装。引擎构建拒绝不匹配的源码提交；发行 workflow 在构建前校验已提交静态库哈希。
+
+## 验证边界
+
+42 项核心测试、14 个 suite 全部通过，iPhone Release 构建通过；新增后台旧快照回归，保留真实 librime 插件/提交、真实 UITextView、同步失败/取消、日志边界和排版测试。7 项原生 UI 测试全部通过，实际键盘验证菜单、混合预输入、候选、同步草稿、日志自动更新、分享/更多、两个相同类型字段切换及深浅色外观；记录放在 `build/review/2.0.0-refinement/`。
+
+本机只有 iOS 26.5 模拟器，已用 iOS 27 SDK 编译；没有宣称完成 iOS 27 真机、真实 WebDAV 或持续内存 footprint 验证。打包检查 zip 完整性、最新词库资源、应用/扩展标识、主类和 2.0.0（16）版本；最终 IPA 为未签名本地包。
+
+生产源码没有残余清空/刷新功能或旧产品命名；词典中的英文单词和历史归档保持上游/原始内容。
+
+## 真机测试前收尾
+
+再次检查注释、文档、源文件与工程配置的一致性。部署脚本补充中断回滚；本地和 CI 使用同一打包脚本，拒绝模拟器构建、版本不一致和带签名的输入。版本继续保持 2.0.0（16）。
+
+本地 dev 与 origin/dev 跟踪引用已清理；用户已批准提交、推送 main 并删除远端 dev。
+
+## 提交前界面微调
+
+同步按钮补充循环箭头图标；同步、日志和日志分享保持 480 pt，导出与同步按钮采用相同宽度及 large 控件尺寸。同步状态消息移到操作栏上方，底边不随消息变化。移除分享临时高度状态、待呈现控制器和无用关闭回调；原生分享自行关闭。字符键预览即时显示和消失，保留触摸反馈与退格连打。更新现有尺寸测试，不增加重复外观测试。
+
+本轮重新通过 42 项核心测试（14 suites）、2 项实际键盘 UI 测试和设备 Release 构建。UI 验证导出/同步按钮实际宽高及底边一致、功能页菜单位置一致、分享/更多正常和混合预输入；记录位于 `build/review/final-polish/`。IPA 完整性、版本、未签名状态及预编译词库资源一致性检查通过。
+
+符号返回字母布局时禁用行几何动画，Shift 图标移除比例变化；仍以填充与字重表示状态。同步必填标识与现有凭据校验一致（服务器、用户名、密码），并提供 VoiceOver 必填提示。目录和安装 ID 沿用默认值，不标为必填。
+
+上述最后两项微调重新通过 42 项核心测试、1 项实际键盘 UI 回归、设备 Release 构建与 IPA 完整性/版本校验；记录位于 `build/review/last-tweaks/`。本轮改动统一提交到 main，版本保持 2.0.0（16）。

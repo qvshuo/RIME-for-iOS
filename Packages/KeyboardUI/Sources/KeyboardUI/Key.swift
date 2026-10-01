@@ -38,6 +38,8 @@ public struct Key: View {
             } else {
                 Button(action: { action(descriptor.action) }) {
                     keyLabel
+                        .transaction { $0.animation = nil }
+                        .contentTransition(.identity)
                         .foregroundStyle(foregroundColor)
                 }
                 .buttonStyle(
@@ -56,6 +58,8 @@ public struct Key: View {
     /// SwiftUI 手势中断可能不回调 onEnded，退格计时由 UIKit 触摸驱动。
     private var repeatableKeyBody: some View {
         keyLabel
+            .transaction { $0.animation = nil }
+            .contentTransition(.identity)
             .foregroundStyle(foregroundColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .keyBackground(
@@ -121,8 +125,7 @@ public struct Key: View {
         case .shift:
             Image(systemName: shiftImageName)
                 .font(.system(size: theme.iconFontSize, weight: shiftState == .uppercaseLocked ? .semibold : .medium))
-                .scaleEffect(shiftState == .uppercaseLocked ? 1.2 : 1.0)
-                .animation(.easeOut(duration: 0.1), value: shiftState)
+                .contentTransition(.identity)
                 .accessibilityLabel(shiftState == .lowercase ? "大写" : "小写")
         default:
             Text(descriptor.label)
@@ -168,8 +171,6 @@ private struct KeyButtonStyle: ButtonStyle {
                 theme: theme
             )
             .contentShape(Rectangle())
-            // 显式覆盖系统默认按键动效（约 0.2s，太慢有迟滞感）。
-            .animation(.easeOut(duration: 0.05), value: configuration.isPressed)
             .overlay(alignment: .top) {
                 if configuration.isPressed, let previewText {
                     Text(previewText)
@@ -184,8 +185,11 @@ private struct KeyButtonStyle: ButtonStyle {
                         .floatingShadow()
                         .offset(y: theme.previewBubbleOffsetY)
                         .allowsHitTesting(false)
+                        .transition(.identity)
                 }
             }
+            // 按压与预览即时反馈，不继承系统按钮的渐变动画。
+            .transaction { $0.animation = nil }
             .onChange(of: configuration.isPressed) { _, isPressed in
                 pressed.wrappedValue = isPressed
                 if isPressed {

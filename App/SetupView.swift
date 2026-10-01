@@ -45,13 +45,13 @@ struct SetupView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("关于").font(.subheadline).foregroundStyle(.secondary)
                     LabeledContent("版本", value: versionText)
                         .padding(20)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
                     Text("基于 RIME 输入法引擎：聪明的输入法懂我心意。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
