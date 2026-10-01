@@ -450,6 +450,7 @@ private struct ExpandedCandidateGrid: View {
                 .padding(.bottom, gridPadding)
                 .padding(.top, metrics.topInset)
             }
+            .scrollEdgeEffectHidden(true, for: .all)
 
             CandidateChevronButton(
                 isExpanded: true,

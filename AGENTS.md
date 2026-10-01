@@ -153,6 +153,7 @@ A global letter cell `L = (gridWidth − 9×6)/10` derives from the 10-key rows,
 
 ### Candidate bar & expanded grid
 
+- Both candidate scroll views explicitly hide system scroll edge effects on all edges; automatic blur must never obscure candidate text.
 - Collapsed: horizontal `ScrollView` + `LazyHStack` of **all** candidates, natural widths (never forced to fill the row); scrollable past the viewport. Right chevron in a fixed 34 pt column, above the fold of the scroll.
 - Expanded: a **grid replaces the entire keyboard** (no residual collapsed bar, avoiding duplicated first-row candidates); background stays transparent. Line-breaking measures text widths (`CandidateGridLayout`, pure functions, unit-tested) — never scales fonts or stuffs cells.
 - **Grid aligns with the collapsed bar**: horizontal padding = `theme.keyboardPadding.leading` (7 pt); the first row's **center** is pinned to `barHeight / 2` → top inset `barHeight / 2 − firstRowHeight / 2`, where `firstRowHeight` is the row 0 **actual** height — `candidateSelectionHeight` (34) when the highlighted candidate is in row 0, else `candidateCellHeight` (32). Do **not** compute from the fixed 32 pt cell — when candidate 0 is the highlighted pill the row is 34 pt and centering on 32 pt drops the first word ~1 pt.

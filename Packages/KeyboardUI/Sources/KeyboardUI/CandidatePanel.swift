@@ -33,7 +33,7 @@ public struct CandidatePanel: View {
             GeometryReader { geometry in
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 0) {
-            // 候选文本每次敲键都变，用下标做稳定身份避免整组重建。
+                        // 候选文本每次敲键都变，用下标做稳定身份避免整组重建。
                         ForEach(Array(candidates.enumerated()), id: \.offset) { index, candidate in
                             candidateButton(index: index, candidate: candidate)
                         }
@@ -41,6 +41,8 @@ public struct CandidatePanel: View {
                     .padding(.leading, theme.keyboardPadding.leading)
                     .frame(height: geometry.size.height, alignment: .center)
                 }
+                // 系统滚动边缘效果会模糊候选文字，候选区必须保持清晰。
+                .scrollEdgeEffectHidden(true, for: .all)
             }
 
             if !candidates.isEmpty {
