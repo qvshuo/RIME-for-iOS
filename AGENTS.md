@@ -51,7 +51,7 @@ xcodebuild -project RIMEForiOS.xcodeproj -scheme RIMEForiOS -configuration Relea
 
 Binary simulator slices are arm64. Swift Testing results follow an initial XCTest report of zero tests. For development App Group access, use valid signing and `ENTITLEMENTS_ALLOWED=YES`; unsigned/self-signed installations normally use private containers.
 
-`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` are the sole version source. Both plists reference them. The SharedSupport copy phase removes its destination first and declares output paths; otherwise incremental builds nest directories or fail script sandboxing. Tag pushes trigger `.github/workflows/release.yml`; do not publish or push without authorization.
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` are the sole version source. Both plists reference them. The SharedSupport copy phase removes its destination first and declares output paths; otherwise incremental builds nest directories or fail script sandboxing. Release CI uses the `xcode-27` runner and explicitly selects Xcode 27.0; `macos-latest` can still ship an older Swift compiler. Tag pushes trigger `.github/workflows/release.yml`; do not publish or push without authorization.
 
 ## Dependency boundaries
 

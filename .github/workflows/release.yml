@@ -10,15 +10,17 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v7
 
-      - name: Select latest Xcode
+      - name: Verify toolchain
         run: |
-          latest="$(ls /Applications | grep '^Xcode' | sort -V | tail -1)"
-          echo "Using $latest"
-          sudo xcode-select -s "/Applications/$latest"
+          xcodebuild -version
+          xcrun swift --version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Verify bundled dependencies
         run: ./scripts/verify-dependencies.sh --binaries
