@@ -8,8 +8,8 @@ import Models
 
 @MainActor
 struct CompositionCommitTests {
-    @Test("大写组合显式提交后清除预输入，上屏文本仅消费一次")
-    func uppercaseCompositionBeforeDirectInput() throws {
+    @Test("大写混合组合仅显式确认时提交，兼容原生 RIME")
+    func literalCompositionAndNativeCommits() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let build = root.appendingPathComponent("build")
         try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
@@ -83,26 +83,82 @@ struct CompositionCommitTests {
         #expect(engine.preedit.isEmpty)
         engine.setAsciiMode(false)
 
-        // 完整覆盖 shift → 大写组合 → 数字/符号，并使用真实 UITextView 宿主。
+        // 手动大写启动字面组合，数字、全角符号和恢复小写都不能提前提交。
         for locked in [false, true] {
-            for (layout, suffix) in [(KeyAction.numbers, "1"), (.symbols, "！")] {
-                let model = KeyboardViewModel()
-                _ = model.consume(.shift)
-                if locked { _ = model.consume(.shift) }
-                #expect(model.consume(.character("a")) == .character("A"))
-                #expect(engine.processKey(65))
-                let proxy = TextViewProxy()
-                proxy.keepsCursorAtMarkedStart = true
-                proxy.setMarkedText(engine.preedit, selectedRange: NSRange(location: engine.preedit.utf16.count, length: 0))
-                _ = model.consume(layout)
-                #expect(model.consume(.character(suffix)) == .directInput(suffix))
-                MarkedTextWriter.finishComposition(appending: suffix, from: engine, replacingMarkedText: true, to: proxy)
-                #expect(proxy.textView.text == "A" + suffix)
-                #expect(proxy.insertions == ["A" + suffix])
-                #expect(proxy.textView.markedTextRange == nil)
-                #expect(engine.preedit.isEmpty)
-                #expect(engine.pollCommit() == nil)
+            for language in [InputLanguage.chinese, .english] {
+                for first in ["a", "1", "！"] {
+                    let model = KeyboardViewModel()
+                    model.inputLanguage = language
+                    _ = model.consume(.shift)
+                    if locked { _ = model.consume(.shift) }
+                    let proxy = TextViewProxy()
+                    proxy.keepsCursorAtMarkedStart = true
+                    var expected = ""
+                    for character in [first, "2", "？", "b", "👩🏽‍💻"] {
+                        _ = model.consume(character == "a" || character == "b" ? .letters : .numbers)
+                        if character == "b" { model.shiftState = .lowercase }
+                        let action = try #require(model.consume(.character(character), rimeContext: engine))
+                        guard case .composingInput(let text) = action else {
+                            Issue.record("字符提前上屏: \(action)")
+                            continue
+                        }
+                        expected += text
+                        #expect(engine.appendLiteralInput(text))
+                        #expect(engine.preedit == expected)
+                        #expect(engine.candidates.map(\.text) == [expected])
+                        #expect(engine.pollCommit() == nil)
+                        proxy.setMarkedText(expected, selectedRange: NSRange(location: expected.utf16.count, length: 0))
+                        #expect(proxy.insertions.isEmpty)
+                    }
+                    let session = engine.session
+                    engine.recreateSession()
+                    #expect(engine.session == session)
+                    #expect(engine.preedit == expected)
+                    #expect(engine.processKey(XK_BackSpace))
+                    expected.removeLast()
+                    #expect(engine.preedit == expected)
+                    #expect(model.consume(.space, rimeContext: engine) == .composingInput(" "))
+                    #expect(engine.appendLiteralInput(" "))
+                    expected += " "
+                    if locked { engine.selectCandidate(at: 0) }
+                    else { #expect(engine.processKey(XK_Return)) }
+                    let commit = try #require(engine.pollCommit())
+                    #expect(commit == expected)
+                    MarkedTextWriter.commit(commit, replacingMarkedText: true, to: proxy)
+                    #expect(proxy.textView.text == expected)
+                    #expect(proxy.insertions == [expected])
+                    #expect(proxy.textView.markedTextRange == nil)
+                    #expect(engine.preedit.isEmpty)
+                    #expect(!engine.isLiteralComposition)
+                    #expect(engine.pollCommit() == nil)
+                }
             }
         }
+        let automaticEnglish = KeyboardViewModel()
+        _ = automaticEnglish.consume(.toggleLanguage)
+        #expect(automaticEnglish.consume(.character("a"), rimeContext: engine) == .character("A"))
+        let lockedModel = KeyboardViewModel()
+        _ = lockedModel.consume(.shift)
+        _ = lockedModel.consume(.shift)
+        #expect(lockedModel.consume(.character("a"), rimeContext: engine) == .composingInput("A"))
+        #expect(engine.appendLiteralInput("A"))
+        #expect(engine.commitComposition())
+        #expect(engine.pollCommit() == "A")
+        #expect(lockedModel.consume(.character("b"), rimeContext: engine) == .composingInput("B"))
+        #expect(engine.appendLiteralInput("B"))
+        engine.reset()
+        #expect(engine.processKey(65))
+        #expect(engine.appendLiteralInput("！"))
+        #expect(engine.preedit == "A！")
+        engine.reset()
+        #expect(engine.appendLiteralInput("A"))
+        #expect(engine.processKey(XK_BackSpace))
+        #expect(engine.preedit.isEmpty)
+        #expect(!engine.isLiteralComposition)
+        #expect(engine.appendLiteralInput("B"))
+        engine.reset()
+        #expect(!engine.isLiteralComposition)
+        #expect(engine.preedit.isEmpty)
+        #expect(engine.pollCommit() == nil)
     }
 }

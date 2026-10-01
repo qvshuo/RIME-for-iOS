@@ -143,6 +143,9 @@ final class InputController: UIInputViewController {
                 insertToProxy(char)
                 displayedPreedit = ""
             }
+        case .composingInput(let text):
+            resetDoubleSpaceState()
+            handled = rimeContext.appendLiteralInput(text)
         case .directInput(let text):
             if !rimeContext.preedit.isEmpty {
                 resetDoubleSpaceState()

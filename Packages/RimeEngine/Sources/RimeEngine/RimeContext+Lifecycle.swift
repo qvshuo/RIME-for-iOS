@@ -153,6 +153,10 @@ extension RimeContext {
     public func destroySession() {
         lock.lock()
         defer { lock.unlock() }
+        if literalComposition != nil {
+            literalComposition = nil
+            setContext(candidates: [], preedit: "", highlighted: 0)
+        }
         guard session != 0 else { return }
         _ = rimeAPI.destroy_session!(session)
         session = 0
@@ -164,7 +168,7 @@ extension RimeContext {
     public func recreateSession() {
         lock.lock()
         defer { lock.unlock() }
-        guard isReady, commitText.isEmpty else { return }
+        guard isReady, commitText.isEmpty, literalComposition == nil else { return }
         // 在引擎锁内复查真实组合；UI 快照可能已过期，不能据此销毁正在输入的会话。
         if session != 0 {
             var context = RimeContext_stdbool()

@@ -4,6 +4,7 @@ import Foundation
 public enum KeyAction: Sendable, Equatable {
     case character(String)
     case directInput(String)
+    case composingInput(String)
     case backspace
     case space
     case startSync

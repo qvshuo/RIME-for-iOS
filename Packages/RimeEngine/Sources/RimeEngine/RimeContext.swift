@@ -21,6 +21,7 @@ public final class RimeContext: @unchecked Sendable {
     /// setup 完成、可以处理按键。
     @ObservationIgnored var isReady = false
     @ObservationIgnored var session: RimeSessionId = 0
+    @ObservationIgnored var literalComposition: String?
     /// 会话创建后应写入的 `ascii_mode` 初始值；会话未创建时先 pending。
     /// `.asciiCapable` 字段需要英文模式，`.default` 需要中文模式。
     @ObservationIgnored var pendingAsciiMode: Bool = false

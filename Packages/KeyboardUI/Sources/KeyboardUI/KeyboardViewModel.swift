@@ -35,6 +35,7 @@ public final class KeyboardViewModel {
     /// `currentRows` 缓存：敲键（仅 preedit/候选变化）不会使缓存失效、重建键描述。
     private var cachedRows: [RowDescriptor] = []
     private var cachedRowsKey: CachedRowsKey?
+    private var startsLiteralComposition = false
     private var lastShiftTap = Date.distantPast
     private static let doubleTapInterval: TimeInterval = 0.35
 
@@ -132,13 +133,19 @@ public final class KeyboardViewModel {
             return nil
         case .shift:
             handleShiftTap()
+            startsLiteralComposition = shiftState != .lowercase
             return nil
         case .toggleLanguage:
+            startsLiteralComposition = false
             inputLanguage = inputLanguage == .chinese ? .english : .chinese
             // 切到英文时默认「首字母大写」一次，切回中文时回到小写。
             shiftState = (inputLanguage == .english) ? .uppercaseOnce : .lowercase
             return .toggleLanguage
         case .space:
+            if usesLiteralComposition(in: rimeContext) {
+                startsLiteralComposition = false
+                return .composingInput(" ")
+            }
             // 有未提交拼音时，空格统一按 RIME 上屏候选（在数字/符号页点「确认」也生效）。
             if needsConfirm(rimeContext: rimeContext) {
                 return .space
@@ -151,29 +158,34 @@ public final class KeyboardViewModel {
             return .directInput(" ")
         case .character(let char):
             let result = shiftedCharacter(char)
+            let composing = usesLiteralComposition(in: rimeContext)
+            startsLiteralComposition = false
             // 一次性大写在任何字符键上都会消耗（含数字/符号页）：符号页「句末符号
             // 自动回字母页」场景下，若保留大写状态会导致回到字母页后下一个字母意外大写。
             if shiftState == .uppercaseOnce {
                 shiftState = .lowercase
             }
-            // 字母页交 RIME（中文=拼音组合，英文=ascii_mode 由引擎直接上屏）；
-            // 数字/符号页绕过 RIME 直接上屏（JSON 里已是目标语言字符）。
-            if currentLayout == .qwerty {
-                return .character(result)
-            }
-            // 部分标点/符号插入后直接回到字母键盘。
-            if Self.autoReturnSymbols.contains(result) {
+            let transformed: KeyAction = composing ? .composingInput(result)
+                : currentLayout == .qwerty ? .character(result) : .directInput(result)
+            if currentLayout != .qwerty, Self.autoReturnSymbols.contains(result) {
                 currentLayout = .qwerty
             }
-            return .directInput(result)
+            return transformed
         default:
             return action
         }
     }
 
+    private func usesLiteralComposition(in engine: RimeContext?) -> Bool {
+        guard let engine else { return false }
+        // 手动 Shift 启动组合；英文模式默认的一次大写仍按普通英文输入处理。
+        return startsLiteralComposition || shiftState == .uppercaseLocked || engine.isLiteralComposition
+    }
+
     /// 宿主键盘类型变化：仅 `.asciiCapable` 强制英文，其余保持中文。
     public func handleKeyboardTypeChange(_ type: UIKeyboardType) {
         guard type != keyboardType else { return }
+        startsLiteralComposition = false
         keyboardType = type
         inputLanguage = (type == .asciiCapable) ? .english : .chinese
         shiftState = (type == .asciiCapable) ? .uppercaseOnce : .lowercase

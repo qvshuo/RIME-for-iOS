@@ -187,6 +187,8 @@ Keep it simple: if `rimeContext.preedit` is empty → `textDocumentProxy.deleteB
 
 - **English starts uppercase-once.** Switching to `.english` (via `.asciiCapable` keyboard type or the language toggle) sets `shiftState = .uppercaseOnce`; the first letter produces uppercase then reverts to lowercase. Space/backspace do **not** consume it; switching to numbers/symbols **does**.
 - 单击临时大写; double-tap within 0.35 s locks caps; locked-tap unlocks (ShiftTap state machine, unit-tested).
+- Manual Shift starts literal composition on the next character or space, including when switching to numbers/symbols first. All following letters (including lowercase), digits, punctuation and spaces remain one preedit candidate until Return/candidate selection. Locked Shift starts a new literal composition after each commit. Automatic English uppercase-once does not start this mode. Credential drafts stay independent.
+- `RimeContext` serializes the literal buffer with native engine access. It preserves native raw input when entering the mode, publishes one literal candidate, removes whole Unicode graphemes on Backspace, and uses the existing one-shot commit path. Full-width symbols bypass native ASCII keycodes so they cannot trigger punctuation or number-based candidate selection. Session recreation also checks this buffer.
 - Tapping 中/英 flips `inputLanguage` and writes `ascii_mode` back to RIME (`setAsciiMode`) after the key returns; commits pending composition first.
 
 ### Symbols page auto-return
