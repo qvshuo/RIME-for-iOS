@@ -12,14 +12,17 @@ public final class KeyboardDiagnostics: Sendable {
     private let lock = Mutex(())
     private var logURL: URL { directory.appendingPathComponent("keyboard.log") }
     private var markerURL: URL { directory.appendingPathComponent("session.json") }
-    private let limit = 256 * 1024
+    private let file: BoundedLogFile
 
     private struct Session: Codable {
         let pid: Int32
         let id: String
     }
 
-    init(directory: URL) { self.directory = directory }
+    init(directory: URL) {
+        self.directory = directory
+        file = BoundedLogFile(url: directory.appendingPathComponent("keyboard.log"))
+    }
 
     public func record(_ message: String) {
         lock.withLock { _ in append(message) }
@@ -60,31 +63,20 @@ public final class KeyboardDiagnostics: Sendable {
         }
     }
 
-    /// 生成独立快照，分享期间继续写日志或清空日志不会改变导出文件。
-    func export() throws -> URL {
+    /// 生成独立快照，分享期间继续写日志不会改变导出文件。
+    public func export() throws -> URL {
         try lock.withLock { _ in
             let sources = [logURL.appendingPathExtension("old"), logURL,
                            RimeContext.shared.exportLogURL()?.appendingPathExtension("old"),
                            RimeContext.shared.exportLogURL()].compactMap { $0 }
             let text = sources.map { url in
-                "--- \(url.lastPathComponent) ---\n" + Self.readTail(url, maxBytes: limit)
+                "--- \(url.lastPathComponent) ---\n" + Self.readTail(url, maxBytes: file.limit)
             }.joined(separator: "\n\n")
             let folder = directory.appendingPathComponent("Export", isDirectory: true)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let url = folder.appendingPathComponent("Quill-diagnostics.txt")
             try text.write(to: url, atomically: true, encoding: .utf8)
             return url
-        }
-    }
-
-    func clear() throws {
-        try lock.withLock { _ in
-            prepareDirectory()
-            try Data().write(to: logURL)
-            let old = logURL.appendingPathExtension("old")
-            if FileManager.default.fileExists(atPath: old.path) { try FileManager.default.removeItem(at: old) }
-            // 运行标记不属于日志，清空不能让本次运行失去退出检测。
-            append("日志已清空")
         }
     }
 
@@ -107,22 +99,6 @@ public final class KeyboardDiagnostics: Sendable {
     }
 
     private func append(_ message: String) {
-        prepareDirectory()
-        let attributes = try? FileManager.default.attributesOfItem(atPath: logURL.path)
-        let data = Data("[\(Date().ISO8601Format())] \(message)\n".utf8).suffix(limit)
-        if let size = attributes?[.size] as? NSNumber, size.intValue + data.count > limit {
-            let old = logURL.appendingPathExtension("old")
-            try? FileManager.default.removeItem(at: old)
-            try? FileManager.default.moveItem(at: logURL, to: old)
-        }
-        if let handle = try? FileHandle(forWritingTo: logURL) {
-            defer { try? handle.close() }
-            do {
-                try handle.seekToEnd()
-                try handle.write(contentsOf: data)
-            } catch { }
-        } else {
-            try? data.write(to: logURL, options: .atomic)
-        }
+        try? file.append(Data("[\(Date().ISO8601Format())] \(message)\n".utf8))
     }
 }

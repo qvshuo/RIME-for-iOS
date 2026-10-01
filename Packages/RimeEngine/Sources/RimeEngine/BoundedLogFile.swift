@@ -1,16 +1,17 @@
 import Foundation
 
-final class BoundedLogFile: @unchecked Sendable {
+public final class BoundedLogFile: @unchecked Sendable {
     let url: URL
-    let limit: Int
+    public let limit: Int
     private let lock = NSLock()
 
-    init(url: URL, limit: Int = 256 * 1024) {
+    public init(url: URL, limit: Int = 256 * 1024) {
+        precondition(limit > 0)
         self.url = url
         self.limit = limit
     }
 
-    func append(_ data: Data) throws {
+    public func append(_ data: Data) throws {
         lock.lock()
         defer { lock.unlock() }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -41,15 +42,4 @@ final class BoundedLogFile: @unchecked Sendable {
         }
     }
 
-    func clear() throws {
-        lock.lock()
-        defer { lock.unlock() }
-        if FileManager.default.fileExists(atPath: url.path) {
-            let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
-            try handle.truncate(atOffset: 0)
-        }
-        let old = url.appendingPathExtension("old")
-        if FileManager.default.fileExists(atPath: old.path) { try FileManager.default.removeItem(at: old) }
-    }
 }

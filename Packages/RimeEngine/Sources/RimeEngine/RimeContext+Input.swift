@@ -53,9 +53,7 @@ extension RimeContext {
             case XK_Return:
                 return commitLiteralComposition()
             case XK_space:
-                literalComposition = text + " "
-                refreshContext()
-                return true
+                return commitLiteralComposition()
             default: return false
             }
         }

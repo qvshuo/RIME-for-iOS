@@ -117,11 +117,14 @@ struct CompositionCommitTests {
                     #expect(engine.processKey(XK_BackSpace))
                     expected.removeLast()
                     #expect(engine.preedit == expected)
-                    #expect(model.consume(.space, rimeContext: engine) == .composingInput(" "))
-                    #expect(engine.appendLiteralInput(" "))
-                    expected += " "
-                    if locked { engine.selectCandidate(at: 0) }
-                    else { #expect(engine.processKey(XK_Return)) }
+                    if first == "a" {
+                        #expect(model.consume(.space, rimeContext: engine) == .space)
+                        #expect(engine.processKey(XK_space))
+                    } else if first == "1" {
+                        #expect(engine.processKey(XK_Return))
+                    } else {
+                        engine.selectCandidate(at: 0)
+                    }
                     let commit = try #require(engine.pollCommit())
                     #expect(commit == expected)
                     MarkedTextWriter.commit(commit, replacingMarkedText: true, to: proxy)

@@ -24,11 +24,11 @@ struct ShiftTapTests {
         let clock = Clock()
         let model = makeModel(clock)
 
-        model.consume(.shift)
+        _ = model.consume(.shift)
         #expect(model.shiftState == .uppercaseOnce)
 
         clock.date += 1 // 超过 0.35s 双击窗口，视为单击
-        model.consume(.shift)
+        _ = model.consume(.shift)
         #expect(model.shiftState == .lowercase)
     }
 
@@ -37,9 +37,9 @@ struct ShiftTapTests {
         let clock = Clock()
         let model = makeModel(clock)
 
-        model.consume(.shift)
+        _ = model.consume(.shift)
         clock.date += 0.1
-        model.consume(.shift)
+        _ = model.consume(.shift)
         #expect(model.shiftState == .uppercaseLocked)
     }
 
@@ -48,13 +48,13 @@ struct ShiftTapTests {
         let clock = Clock()
         let model = makeModel(clock)
 
-        model.consume(.shift)
+        _ = model.consume(.shift)
         clock.date += 0.1
-        model.consume(.shift)
+        _ = model.consume(.shift)
         #expect(model.shiftState == .uppercaseLocked)
 
         clock.date += 1 // 超过双击窗口，视为单击
-        model.consume(.shift)
+        _ = model.consume(.shift)
         #expect(model.shiftState == .lowercase)
     }
 }

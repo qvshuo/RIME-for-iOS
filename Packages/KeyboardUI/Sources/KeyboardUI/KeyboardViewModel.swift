@@ -31,26 +31,20 @@ public final class KeyboardViewModel {
     /// 布局加载失败时记录（键盘面板兜底展示），避免「空白键盘无提示」。
     public var errorMessage: String?
 
-    private var cachedLayouts: [KeyboardLayout: [InputLanguage: LayoutDescriptor]] = [:]
+    @ObservationIgnored private var cachedLayouts: [KeyboardLayout: [InputLanguage: LayoutDescriptor]] = [:]
     /// `currentRows` 缓存：敲键（仅 preedit/候选变化）不会使缓存失效、重建键描述。
-    private var cachedRows: [RowDescriptor] = []
-    private var cachedRowsKey: CachedRowsKey?
-    private var startsLiteralComposition = false
-    private var lastShiftTap = Date.distantPast
+    @ObservationIgnored private var cachedRows: [RowDescriptor] = []
+    @ObservationIgnored private var cachedRowsKey: CachedRowsKey?
+    @ObservationIgnored private var startsLiteralComposition = false
+    @ObservationIgnored private var lastShiftTap = Date.distantPast
     private static let doubleTapInterval: TimeInterval = 0.35
 
     /// 时间源（测试可注入，使双击判定的时序可确定）。
-    var now: () -> Date = Date.init
+    @ObservationIgnored var now: () -> Date = Date.init
 
     /// 宿主请求的键盘类型与回车键类型（由键盘控制器写入）。
     public var keyboardType: UIKeyboardType = .default
     public var returnKeyType: UIReturnKeyType = .default
-
-    /// 当前是否有未提交的拼音组合。
-    public func needsConfirm(rimeContext: RimeContext?) -> Bool {
-        guard let rimeContext else { return false }
-        return !rimeContext.preedit.isEmpty
-    }
 
     /// 实际显示的回车键文案；仅由行视图在自身 body 读取（不进键盘根 body）。
     public nonisolated static func effectiveReturnLabel(hasPreedit: Bool, hostLabel: String) -> String {
@@ -68,7 +62,7 @@ public final class KeyboardViewModel {
         loadLayouts()
     }
 
-    public func loadLayouts() {
+    private func loadLayouts() {
         for layout in KeyboardLayout.allCases {
             var perLanguage: [InputLanguage: LayoutDescriptor] = [:]
             for language in [InputLanguage.chinese, .english] {
@@ -142,12 +136,8 @@ public final class KeyboardViewModel {
             shiftState = (inputLanguage == .english) ? .uppercaseOnce : .lowercase
             return .toggleLanguage
         case .space:
-            if usesLiteralComposition(in: rimeContext) {
-                startsLiteralComposition = false
-                return .composingInput(" ")
-            }
             // 有未提交拼音时，空格统一按 RIME 上屏候选（在数字/符号页点「确认」也生效）。
-            if needsConfirm(rimeContext: rimeContext) {
+            if rimeContext?.preedit.isEmpty == false {
                 return .space
             }
             // 中文（含数字/符号页）的空格交 RIME 处理：无组合时上屏空格、双击转「。」；

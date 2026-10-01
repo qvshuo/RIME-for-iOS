@@ -31,14 +31,6 @@ final class EngineLogCapture: @unchecked Sendable {
         }
     }
 
-    func clear(at url: URL) throws {
-        try queue.sync {
-            // 先消费已排队的旧输出，避免清空后马上重新出现。
-            drain()
-            try (file ?? BoundedLogFile(url: url)).clear()
-        }
-    }
-
     private func drain() {
         guard readDescriptor >= 0, let file else { return }
         var buffer = [UInt8](repeating: 0, count: 8192)

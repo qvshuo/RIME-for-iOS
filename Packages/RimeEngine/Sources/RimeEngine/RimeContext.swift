@@ -38,7 +38,7 @@ public final class RimeContext: @unchecked Sendable {
     /// 持锁下由任意线程写入，不走「只在主线程写」的可观察通道。
     @ObservationIgnored public internal(set) var commitText: String = ""
 
-    let logFileName = "quill.log"
+    let logURL = Paths.logDirectory?.appendingPathComponent("quill.log")
 
     public func claimSession(_ owner: UUID) {
         sessionOwner.withLock { $0 = owner }

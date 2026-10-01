@@ -15,7 +15,7 @@ extension RimeContext {
     }
 
     public func exportLogURL() -> URL? {
-        Paths.logDirectory?.appendingPathComponent(logFileName)
+        logURL
     }
 
     public func redirectStderrToLogFile() {
@@ -40,8 +40,4 @@ extension RimeContext {
         }
     }
 
-    public func clearLog() throws {
-        guard let url = exportLogURL() else { return }
-        try EngineLogCapture.shared.clear(at: url)
-    }
 }

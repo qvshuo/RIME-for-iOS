@@ -14,17 +14,16 @@ struct KeyboardDiagnosticsTests {
         #expect(!text.contains("�"))
     }
 
-    @Test("清空日志保留运行标记，旧控制器退出不删除新会话标记")
+    @Test("旧控制器退出不删除新会话标记")
     func sessionOwnership() throws {
         let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = KeyboardDiagnostics(directory: directory)
         log.beginSession("first")
-        log.record("before clear")
-        try log.clear()
+        log.record("session event")
         let marker = directory.appendingPathComponent("session.json")
         #expect(FileManager.default.fileExists(atPath: marker.path))
-        #expect(!log.tail().contains("before clear"))
+        #expect(log.tail().contains("session event"))
         log.beginSession("second")
         log.endSession("first")
         #expect(FileManager.default.fileExists(atPath: marker.path))
@@ -37,9 +36,14 @@ struct KeyboardDiagnosticsTests {
         let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = KeyboardDiagnostics(directory: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 65, count: 1 << 20).write(to: directory.appendingPathComponent("keyboard.log"))
         log.record(String(repeating: "a", count: 1 << 20))
         log.record("latest")
         #expect(log.tail().contains("latest"))
-        #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("keyboard.log.old").path))
+        for name in ["keyboard.log", "keyboard.log.old"] {
+            #expect(try Data(contentsOf: directory.appendingPathComponent(name)).count <= 256 * 1024)
+        }
+        #expect(try Data(contentsOf: log.export()).count < 4 * 256 * 1024 + 512)
     }
 }

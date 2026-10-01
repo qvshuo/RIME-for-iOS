@@ -11,6 +11,7 @@ final class InputController: UIInputViewController {
     private let rimeContext = RimeContext.shared
     private let inputState = InputState()
     private let sessionID = UUID()
+    private var pendingLogExport: UINavigationController?
     private var displayedPreedit: String = ""
     private var hostingController: UIHostingController<KeyboardView>?
     private var doubleSpaceTracker = DoubleSpaceTracker(interval: 0.35)
@@ -125,8 +126,62 @@ final class InputController: UIInputViewController {
             returnKeyType: textDocumentProxy.returnKeyType ?? .default,
             onKey: { [weak self] action in
                 self?.handleKeyAction(action)
-            }
+            },
+            onExportLogs: { [weak self] in self?.exportLogs() }
         )
+    }
+
+    private func exportLogs() {
+        guard let presenter = hostingController,
+              presenter.presentedViewController == nil, inputState.logExportHeight == nil else { return }
+        do {
+            let archive = try KeyboardDiagnostics.shared.export()
+            let activity = UIActivityViewController(activityItems: [archive], applicationActivities: nil)
+            activity.navigationItem.rightBarButtonItem = UIBarButtonItem(
+                systemItem: .close,
+                primaryAction: UIAction { [weak self] _ in self?.dismissLogExport() }
+            )
+            let navigation = UINavigationController(rootViewController: activity)
+            navigation.modalPresentationStyle = .popover
+            navigation.popoverPresentationController?.sourceView = presenter.view
+            navigation.popoverPresentationController?.delegate = self
+            navigation.popoverPresentationController?.permittedArrowDirections = []
+            activity.completionWithItemsHandler = { [weak self] _, _, _, _ in
+                Task { @MainActor in self?.dismissLogExport() }
+            }
+            // 扩展的分享界面只能使用自身区域，导出时临时扩大内在高度。
+            let screenHeight = view.window?.windowScene?.effectiveGeometry.coordinateSpace.bounds.height ?? view.bounds.height
+            pendingLogExport = navigation
+            inputState.logExportHeight = max(view.bounds.height, screenHeight * 0.75)
+            view.setNeedsLayout()
+        } catch {
+            KeyboardDiagnostics.shared.record("日志导出失败：\(error.localizedDescription)")
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard let activity = pendingLogExport else { return }
+        guard let height = inputState.logExportHeight else {
+            pendingLogExport = nil
+            return
+        }
+        guard view.bounds.height >= height - 1 else { return }
+        pendingLogExport = nil
+        // 必须等扩展完成自适应布局，否则系统弹出框仍采用原来的键盘高度。
+        activity.preferredContentSize = CGSize(width: view.bounds.width, height: height)
+        activity.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY, width: 1, height: 1)
+        hostingController?.present(activity, animated: true)
+    }
+
+    private func dismissLogExport() {
+        guard let presenter = hostingController, presenter.presentedViewController != nil else {
+            inputState.logExportHeight = nil
+            return
+        }
+        presenter.dismiss(animated: true) { [weak self] in
+            self?.inputState.logExportHeight = nil
+        }
     }
 
     private func handleKeyAction(_ action: KeyAction) {
@@ -331,5 +386,19 @@ private struct DoubleSpaceTracker {
     mutating func reset() {
         lastTap = .distantPast
         lastTapInsertedLiteralSpace = false
+    }
+}
+
+extension InputController: UIPopoverPresentationControllerDelegate {
+    func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
+        .none
+    }
+
+    func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) {
+        inputState.logExportHeight = nil
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        inputState.logExportHeight = nil
     }
 }

@@ -2,9 +2,11 @@ import SwiftUI
 import UIKit
 
 struct SettingsView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isOurKeyboardEnabled = keyboardEnabled()
     /// 完全访问只影响键盘扩展联网（同步）；per-app 自签基线下主 App 无通道
     /// 感知该状态，故不展示授权提示。WebDAV 同步与日志均在键盘内完成。
-    private var isOurKeyboardEnabled: Bool {
+    private static func keyboardEnabled() -> Bool {
         let target = "art.anjing.quill.keyboard"
         if let keyboards = UserDefaults.standard.array(forKey: "AppleKeyboards") as? [String] {
             return keyboards.contains { $0.contains(target) }
@@ -27,10 +29,14 @@ struct SettingsView: View {
                     .padding(.bottom, 8)
 
                 VStack(alignment: .leading, spacing: 20) {
-                    Label(isOurKeyboardEnabled ? "Quill 输入法已启用" : "Quill 输入法未启用",
-                          systemImage: isOurKeyboardEnabled ? "checkmark.circle.fill" : "keyboard")
-                        .font(.body)
-                        .foregroundStyle(isOurKeyboardEnabled ? Color.green : Color.primary)
+                    Label {
+                        Text(isOurKeyboardEnabled ? "输入法已启用" : "输入法未启用")
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: isOurKeyboardEnabled ? "checkmark.circle.fill" : "keyboard")
+                            .foregroundStyle(isOurKeyboardEnabled ? Color.green : Color.primary)
+                    }
+                    .font(.body)
                     if !isOurKeyboardEnabled {
                         Button("去系统设置中开启", systemImage: "arrow.up.forward") {
                             openKeyboardSettings()
@@ -58,6 +64,9 @@ struct SettingsView: View {
             .padding(.bottom, 32)
         }
         .background(Color(uiColor: .systemGroupedBackground))
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { isOurKeyboardEnabled = Self.keyboardEnabled() }
+        }
     }
 
     /// 逐级尝试直达键盘设置页，全部失败退回本 App 设置页（系统未公开直达 scheme）。

@@ -14,6 +14,7 @@ public struct KeyboardView: View {
     let keyboardType: UIKeyboardType
     let returnKeyType: UIReturnKeyType
     let onKey: (KeyAction) -> Void
+    let onExportLogs: () -> Void
 
     /// 主题跟随宿主 App 的深浅色（同 fcitx5-ios），控制器不解析、由 SwiftUI 环境自动重求值。
     private var resolvedTheme: Theme {
@@ -25,13 +26,15 @@ public struct KeyboardView: View {
         inputState: InputState,
         keyboardType: UIKeyboardType = .default,
         returnKeyType: UIReturnKeyType = .default,
-        onKey: @escaping (KeyAction) -> Void
+        onKey: @escaping (KeyAction) -> Void,
+        onExportLogs: @escaping () -> Void = {}
     ) {
         self.rimeContext = rimeContext
         self.inputState = inputState
         self.keyboardType = keyboardType
         self.returnKeyType = returnKeyType
         self.onKey = onKey
+        self.onExportLogs = onExportLogs
         self._viewModel = State(initialValue: KeyboardViewModel())
     }
 
@@ -71,7 +74,7 @@ public struct KeyboardView: View {
                                     keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
                                 }
                             case .log:
-                                LogPanelView(theme: theme)
+                                LogPanelView(theme: theme, onExport: onExportLogs)
                             case .input:
                                 EmptyView()
                             }
@@ -117,6 +120,7 @@ public struct KeyboardView: View {
         }
         .onChange(of: inputState.panelMode) { _, mode in
             settings.editingField = nil
+            if mode != .log { inputState.logExportHeight = nil }
             let name = switch mode { case .input: "输入"; case .sync: "同步"; case .log: "日志" }
             KeyboardDiagnostics.shared.record("面板 → \(name)")
         }
@@ -129,8 +133,9 @@ public struct KeyboardView: View {
     }
 
     private func panelHeight(theme: Theme) -> CGFloat {
+        if inputState.panelMode == .log, let height = inputState.logExportHeight { return height }
         guard inputState.panelMode == .sync else { return theme.totalHeight }
-        return settings.editingField == nil ? 350 : 520
+        return settings.editingField == nil ? 480 : 580
     }
 
     private func selectAndCollapse(_ index: Int) {
@@ -213,9 +218,18 @@ private struct PanelMenu: View {
 
     var body: some View {
         Menu {
-            Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
-            Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
-            Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
+            if inputState.panelMode != .input {
+                Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
+                    .accessibilityIdentifier("panel-menu-input")
+            }
+            if inputState.panelMode != .sync {
+                Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
+                    .accessibilityIdentifier("panel-menu-sync")
+            }
+            if inputState.panelMode != .log {
+                Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
+                    .accessibilityIdentifier("panel-menu-log")
+            }
         } label: {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 14, weight: .medium))
@@ -242,16 +256,10 @@ private struct PanelHeader: View {
                 Button("完成") { settings.editingField = nil }
                     .buttonStyle(.glass)
                     .font(.system(size: 14, weight: .medium))
-            } else {
-                Button { inputState.panelMode = .input } label: {
-                    Image(systemName: "keyboard").font(.system(size: 14))
-                }
-                .buttonStyle(.glass)
-                .accessibilityLabel("返回键盘")
             }
         }
         .foregroundStyle(theme.keyForeground)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, theme.keyboardPadding.leading)
         .frame(height: 48)
     }
 }
@@ -268,7 +276,9 @@ private struct CandidatesBar: View {
         HStack(spacing: 0) {
             if rimeContext.preedit.isEmpty || inputState.panelMode != .input {
                 PanelMenu(inputState: inputState, theme: theme)
-                    .frame(width: 40, height: theme.candidateBarHeight + theme.keyboardPadding.top)
+                    .padding(.leading, theme.keyboardPadding.leading)
+                    .frame(width: theme.keyboardPadding.leading + 40,
+                           height: theme.candidateBarHeight + theme.keyboardPadding.top, alignment: .leading)
             }
             CandidatePanel(candidates: rimeContext.candidates,
                            highlightedIndex: rimeContext.highlightedCandidateIndex,

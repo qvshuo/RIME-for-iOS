@@ -19,9 +19,11 @@ struct SyncPanelView: View {
                     }
                     .background(theme.keyBackground, in: RoundedRectangle(cornerRadius: 18))
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
                 }
                 .scrollIndicators(.hidden)
+                .scrollEdgeEffectHidden(true, for: .all)
                 .onChange(of: model.editingField) { _, field in
                     if let field {
                         withAnimation(.easeOut(duration: 0.18)) { reader.scrollTo(field, anchor: .center) }
@@ -30,10 +32,10 @@ struct SyncPanelView: View {
             }
             if confirmingDelete {
                 HStack {
-                    Text("删除保存的配置？")
+                    Text("删除已保存的凭据？")
                     Spacer()
                     Button("取消") { confirmingDelete = false }
-                    Button("删除", role: .destructive) { model.delete(); confirmingDelete = false }
+                    Button("删除凭据", role: .destructive) { model.delete(); confirmingDelete = false }
                 }
                 .font(.system(size: 13))
                 .padding(.horizontal, 14)
@@ -48,7 +50,7 @@ struct SyncPanelView: View {
                         }
                         .buttonStyle(.glass)
                         .disabled(model.allCredentialsEmpty || model.isTesting || inputState.isSyncing)
-                        Button("删除", systemImage: "trash", role: .destructive) { confirmingDelete = true }
+                        Button("删除凭据", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                             .buttonStyle(.glass)
                             .disabled(!model.hasSavedCredentials || model.isTesting || inputState.isSyncing)
                         Spacer(minLength: 0)
@@ -59,6 +61,8 @@ struct SyncPanelView: View {
                             }
                         }
                         .buttonStyle(.glassProminent)
+                        .tint(.blue)
+                        .controlSize(.large)
                         .disabled(!model.hasSavedCredentials || model.hasUnsavedChanges || model.isTesting || inputState.isSyncing)
                     }
                 }
@@ -89,22 +93,21 @@ struct SyncPanelView: View {
         let value = model.values[field, default: ""]
         return HStack(spacing: 10) {
             Button { model.editingField = field } label: {
-                HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(field.title)
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 64, alignment: .leading)
-                    HStack(spacing: 2) {
-                        Text(value.isEmpty ? field.placeholder : value)
-                            .foregroundStyle(value.isEmpty ? theme.keyForeground.opacity(0.4) : theme.keyForeground)
-                            .lineLimit(1)
-                            .truncationMode(editing ? .head : .tail)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(theme.keyForeground)
+                    HStack(alignment: .top, spacing: 2) {
+                        Text(value.isEmpty && !editing ? field.placeholder : value)
+                            .foregroundStyle(value.isEmpty ? theme.keyForeground.opacity(0.55) : theme.keyForeground)
+                            .lineLimit(editing ? 3 : 2)
+                            .fixedSize(horizontal: false, vertical: true)
                         if editing {
                             Capsule().fill(Color.accentColor).frame(width: 2, height: 18)
                         }
                     }
                     .font(.system(size: 15))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 18, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -124,7 +127,8 @@ struct SyncPanelView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
-        .frame(minHeight: 44)
+        .padding(.vertical, 12)
+        .frame(minHeight: 68)
         .background(editing ? Color.accentColor.opacity(0.07) : Color.clear)
         .disabled(model.isTesting || inputState.isSyncing)
     }
