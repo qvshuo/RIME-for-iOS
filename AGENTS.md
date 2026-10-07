@@ -10,7 +10,7 @@ Display name: **RIME for iOS**. Project/product: `RIMEForiOS`. Keyboard target: 
 App/                         RIMEApp, SetupView, assets, App.entitlements
 KeyboardExtension/           KeyboardInputController, Keyboard.entitlements
 Packages/
-  KeyboardModels/            Candidate, KeyAction, KeyboardLayout, panel and toast states
+  KeyboardModels/            Candidate, KeyAction, KeyboardLayout and panel states
   RimeEngine/                librime bridge, RimeContext, RimePaths, bounded engine logs
   RimeSync/                  WebDAV transport, credential storage and file orchestration
   KeyboardUI/                SwiftUI panels, input model, geometry and JSON layouts
@@ -62,13 +62,13 @@ RIMEKeyboard → KeyboardUI → RimeSync → RimeEngine → KeyboardModels
                          → KeyboardModels
 ```
 
-The main app only displays setup status and version; it neither links KeyboardUI nor starts librime. Backend/network details stay in RimeSync; RimeEngine remains independent of WebDAV. Keep names tied to responsibilities rather than the product brand. Comments explain constraints and reasons, not obvious code or abandoned implementations.
+The main app displays setup status/version and shows network access status confirmed by connectivity and links to system settings; it neither links KeyboardUI nor starts librime. Backend/network details stay in RimeSync; RimeEngine remains independent of WebDAV. Keep names tied to responsibilities rather than the product brand. Comments explain constraints and reasons, not obvious code or abandoned implementations. Use concise Chinese prose in project-owned source: `///` documents contracts or invariants, while `//` explains a local decision. Keep upstream headers unchanged; avoid historical comparisons and claims stronger than the implementation.
 
 State ownership:
 
 - `RimeContext`: process engine, candidates, preedit and one-shot commit. Internal mutable state is ObservationIgnored and protected by NSRecursiveLock; UI publication runs on the main thread.
 - `InputState`: controller-local host state and current panel.
-- `KeyboardSyncState.shared`: process-wide maintenance gate and transient result.
+- `KeyboardSyncState.shared`: process-wide maintenance gate and transient result shown only in the sync button.
 - `SyncSettingsModel`: credential draft and connectivity testing. Its separate KeyboardInputModel never changes host language or writes draft text to the host.
 - `KeyboardInputModel`: layout, language and Shift. Cached rows only depend on these low-frequency values; candidate/preedit observation stays in child views.
 
@@ -77,7 +77,7 @@ State ownership:
 - Initialize data_size on RimeTraits, RimeContext and RimeCommit. Zero values silently disable optional fields/context results.
 - Setup happens once per process; a second glog initialization can crash. Initialize in the background, create/publish the session on the main thread, and serialize all API access under the recursive lock.
 - Read get_commit exactly once and retain it until pollCommit consumes it. Never infer a commit merely from process_key returning true.
-- RimeEngineC explicitly retains Lua and octagram registration objects. Static linking alone can discard them. levers must be registered by deployer_initialize for user dictionary synchronization.
+- RimeEngineC explicitly retains Lua and octagram registration objects. Static linking alone can discard them. levers must be registered by deployer_initialize for user dictionary synchronization; clear traits.modules first so the custom input module list does not override the default deployer group.
 - Runtime full deployment is absent. Read bundled precompiled data; initialization and session creation are allowed. Keyboard extension memory limits vary by device/OS; do not treat a historical ~77 MiB observation as a universal guarantee.
 - Select luna_pinyin, with the first available schema as fallback. There is no runtime schema picker.
 - App Group user data is `Rime/`; private data is `Application Support/RIMEForiOS/Rime/`. Credentials are stored under the corresponding group/private support directory. Main app and extension private containers are separate.
@@ -101,13 +101,13 @@ Optional scripts default to `../librime`; use RIME_ROOT for an isolated clone at
 - Input height is 266 pt, sync/log/export 480 pt, inline editing 580 pt. UIInputView.allowsSelfSizing plus hosting intrinsicContentSize drives system sizing. Mount hosting in viewWillAppear to avoid a loading layout shift. Log export keeps the log page height.
 - Key height 45, row gap 11, horizontal padding 7. RowLayoutMath keeps geometry pure: fixed function keys, elastic space, return-label borrowing, aligned z/s and m/k. Widths/gaps determine actual frames; don't replace them with arbitrary weights.
 - Candidate scroll views hide scroll edge blur. Collapsed candidates use natural widths and LazyHStack; expanded candidates use a lazy grid and a stable snapshot. The initial native page has 9 candidates; expansion fetches up to 77. First-row alignment uses the actual selected/unselected cell height. No candidate comments are rendered.
-- All menu buttons align to q and offer only the other two panels. Credential editing stays in a vertical title/value list with one Done button, a visible password and active-row Paste/Clear. Server, username and password carry red required markers; path and installation ID use defaults when empty. Avoid native text fields that summon another keyboard inside the extension.
+- The keyboard menu aligns to q and offers sync/log panels. Sync and log headers use the same circular glass style with a back arrow that returns directly to the keyboard. Credential editing stays in a vertical title/value list with one Done button, a visible password and active-row Paste/Clear. Server, username and password carry red required markers; path and installation ID use defaults when empty. Avoid native text fields that summon another keyboard inside the extension.
 
 ## Synchronization and diagnostics
 
-Credentials require HTTPS without embedded auth/query/fragment, safe relative paths and a one-component device ID. Defaults: Rime_Sync and iPhone. Save tests connectivity before atomically persisting JSON with mode 0600, iOS file protection and backup exclusion. This is system-protected storage, not application-level encryption.
+Credentials require HTTPS without embedded auth/query/fragment, safe relative paths and a one-component device ID. Defaults: Rime_Sync and iPhone. Save checks keyboard full access and tests connectivity with a 15-second resource deadline before atomically persisting JSON with mode 0600, iOS file protection and backup exclusion. This is system-protected storage, not application-level encryption.
 
-Manual sync uses a process gate, unique staging directory and at most two parallel device downloads. Listing/download failure aborts before applying files. Only *.userdb.txt/custom_phrase.txt are transferred; foreign phrases overwrite deterministically in sorted device order. Blocking engine maintenance merges dictionaries, restores installation.yaml and recreates the session before input resumes. Upload/read failures are reported. Timeout cancels network work but waits for noninterruptible maintenance, so completion can exceed the deadline. Always clean staging. No background sync, local mirror or forced deploy.
+Manual sync uses a process gate, unique staging directory and at most two parallel device downloads. Listing/download failure aborts before applying files. Only luna_pinyin_extended.userdb.txt/custom_phrase.txt are transferred; foreign phrases overwrite deterministically in sorted device order. Blocking engine maintenance merges dictionaries, restores installation.yaml and recreates the session before input resumes. Upload/read failures are reported. Timeout cancels network work but waits for noninterruptible maintenance, so completion can exceed the deadline. Always clean staging. No background sync, local mirror or forced deploy.
 
 Engine logs: Logs/engine.log. Keyboard logs: Logs/Keyboard/keyboard.log. BoundedLogFile serializes writes; each has one current and one previous file at 256 KiB each, including oversized legacy truncation. Native logging starts at warning and avoids independent unbounded glog files. Never record keystrokes/passwords. PID/session markers indicate incomplete cleanup, not proof of a crash.
 

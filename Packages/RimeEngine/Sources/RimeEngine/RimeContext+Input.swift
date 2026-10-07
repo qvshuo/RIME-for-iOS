@@ -186,8 +186,7 @@ extension RimeContext {
         }
         _ = rimeAPI.free_context!(&ctx)
 
-        // 取满 77 个候选（超出当前页的部分用候选列表迭代器补齐），供展开网格使用。
-        // 热路径（loadAll == false）只保留当前页，补齐仅在展开网格时发生。
+        // 仅展开时迭代当前页之外的候选，按键热路径不做额外翻页。
         var batch = candidates
         if loadAll, batch.count < candidateBatchSize, session != 0 {
             batch.append(contentsOf: candidateList(from: batch.count, count: candidateBatchSize - batch.count))

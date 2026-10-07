@@ -49,7 +49,7 @@ final class SyncSettingsModel {
 
     init(store: WebDAVCredentialStore = .shared,
          testConnection: @escaping @Sendable (WebDAVCredentials) async throws -> Void = { credentials in
-             let client = WebDAVClient(credentials: credentials)
+             let client = WebDAVClient(credentials: credentials, requestTimeout: 15, resourceTimeout: 15)
              do {
                  _ = try await client.listDirectory(relativePath: credentials.syncPath ?? "Rime_Sync")
              } catch WebDAVClient.WebDAVError.serverError(let code) where code == 404 {
@@ -103,13 +103,23 @@ final class SyncSettingsModel {
         values[field] = ""
     }
 
-    func save() async {
-        guard !isTesting else { return }
+    func requireFullAccess(_ allowed: Bool) -> Bool {
+        guard allowed else {
+            show("请在系统设置 → 通用 → 键盘 → 键盘 → RIME for iOS 中开启“允许完全访问”，再重试。", isError: true)
+            return false
+        }
+        return true
+    }
+
+    func save(hasFullAccess: Bool = true) async {
+        guard !isTesting, (!hasSavedCredentials || hasUnsavedChanges), requireFullAccess(hasFullAccess) else { return }
         do {
             let credentials = try WebDAVCredentials(
                 baseURL: values[.server, default: ""], username: values[.username, default: ""],
                 password: values[.password, default: ""], syncPath: values[.path], installationID: values[.installationID]
             ).validated()
+            message = nil
+            isError = false
             isTesting = true
             defer { isTesting = false }
             try await testConnection(credentials)
@@ -118,6 +128,15 @@ final class SyncSettingsModel {
             savedValues = values
             hasSavedCredentials = true
             show("连接成功，已保存。")
+        } catch let error as URLError {
+            switch error.code {
+            case .timedOut:
+                show("连接测试超时，请先在 RIME for iOS 主应用中开启联网权限，再检查服务器地址并重试。", isError: true)
+            case .notConnectedToInternet, .dataNotAllowed:
+                show("网络不可用，请先在 RIME for iOS 主应用中开启联网权限，并检查系统的无线局域网／蜂窝数据权限。", isError: true)
+            default:
+                show(error.localizedDescription, isError: true)
+            }
         } catch {
             show(error.localizedDescription, isError: true)
         }

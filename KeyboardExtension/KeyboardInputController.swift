@@ -62,7 +62,7 @@ final class KeyboardInputController: UIInputViewController {
         refreshDocumentState()
         refreshInputTextState()
         refreshKeyboardContext()
-        // viewDidLoad 挂载会有巨大布局位移，须在此挂载；幂等防重复 addChild / 约束累积。
+        // 即将显示时再挂载，避免键盘滑入过程中因宿主尺寸更新而跳动。
         guard let hostingController, hostingController.view.superview == nil else { return }
         addChild(hostingController)
         view.addSubview(hostingController.view)
@@ -146,6 +146,7 @@ final class KeyboardInputController: UIInputViewController {
             inputState: inputState,
             keyboardType: textDocumentProxy.keyboardType ?? .default,
             returnKeyType: textDocumentProxy.returnKeyType ?? .default,
+            hasFullAccess: { [weak self] in self?.hasFullAccess ?? false },
             onKey: { [weak self] action in
                 self?.handleKeyAction(action)
             },
@@ -280,7 +281,7 @@ final class KeyboardInputController: UIInputViewController {
     }
 
     private func startManualSync() {
-        guard rimeContext.preedit.isEmpty else { return }
+        guard hasFullAccess, rimeContext.preedit.isEmpty else { return }
         resetDoubleSpaceState()
         inputState.sync.start()
     }

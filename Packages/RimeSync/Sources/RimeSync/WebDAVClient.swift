@@ -25,12 +25,13 @@ public final class WebDAVClient: Sendable {
     private let credentials: WebDAVCredentials
     private let session: URLSession
 
-    public init(credentials: WebDAVCredentials) {
+    public init(credentials: WebDAVCredentials, requestTimeout: TimeInterval = 120, resourceTimeout: TimeInterval = 300) {
         self.credentials = credentials
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 300
-        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = requestTimeout
+        config.timeoutIntervalForResource = resourceTimeout
+        // 手动操作在网络不可用时直接报错，避免键盘长时间停在测试/同步中。
+        config.waitsForConnectivity = false
         self.session = URLSession(configuration: config)
     }
 
@@ -130,8 +131,8 @@ public final class WebDAVClient: Sendable {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "MKCOL"
-        // 405 = 已存在，视为成功。
-        _ = try await perform(request) { $0 == 201 || $0 == 405 || (200..<300).contains($0) }
+        // 已有集合通常返回 405，允许重复创建同步目录。
+        _ = try await perform(request) { $0 == 405 || (200..<300).contains($0) }
     }
 
     /// 只接受当前集合的直接子项，拒绝越界路径及损坏 XML。

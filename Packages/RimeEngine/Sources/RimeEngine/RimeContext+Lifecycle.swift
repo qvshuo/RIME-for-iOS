@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 @preconcurrency import RimeEngineC
 
 extension RimeContext {
@@ -22,8 +21,7 @@ extension RimeContext {
             }.value
             // 预热 session 避免首次按键迟滞；回到主线程创建，保证可观测状态只在主线程写。
             createSessionIfNeeded()
-            // 本应用按自签安装设计：无 App Group 是常态，两个进程词库/日志各自独立，
-            // 排障时先用这行确认当前进程的日志落点。
+            // 私有容器不会与主应用共享数据，日志标记实际使用的容器。
             self.log("AppGroup \(RimePaths.appGroupContainer != nil ? "shared" : "per-app (self-signed baseline)")")
             self.log("RIME ready")
         } catch {
@@ -92,8 +90,9 @@ extension RimeContext {
         NSLog("RIMEForiOS RIME setup shared=%@ user=%@", shared as NSString, user as NSString)
         rimeAPI.setup!(&traits)
         rimeAPI.initialize!(&traits)
-        // initialize 只加载 kDefaultModules；部署任务由 levers 模块注册，
-        // 须显式加载，否则 RimeSyncUserData 无任务可调度、直接失败。
+        // 自定义输入模块列表会覆盖 deployer_initialize 的默认部署模块。
+        // 清空后加载 deployer/levers，注册同步任务而不执行全量部署。
+        traits.modules = nil
         rimeAPI.deployer_initialize!(&traits)
 
         isSetup = true
@@ -107,8 +106,7 @@ extension RimeContext {
         if session == 0 {
             createSession()
         } else if !rimeAPI.find_session!(session) {
-            // 会话句柄在 librime 侧已失效（可能被内部清理）：先销毁再重建，
-            // 避免泄漏旧句柄。
+            // librime 可能已清理会话，先丢弃关联的组合和提交状态再重建。
             log("stale session detected, recreating")
             destroySession()
             createSession()

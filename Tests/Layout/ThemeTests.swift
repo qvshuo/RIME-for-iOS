@@ -1,5 +1,6 @@
 import Testing
 import SwiftUI
+import UIKit
 @testable import KeyboardUI
 
 struct ThemeTests {
@@ -28,5 +29,26 @@ struct ThemeTests {
             #expect(abs(blended.g - target.g) < 0.02)
             #expect(abs(blended.b - target.b) < 0.02)
         }
+    }
+}
+
+private extension Theme {
+    nonisolated static func blended(
+        _ color: Color,
+        over backdrop: CGFloat = darkBackdrop
+    ) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+        let c = rgba(color)
+        return (
+            c.r * c.a + backdrop * (1 - c.a),
+            c.g * c.a + backdrop * (1 - c.a),
+            c.b * c.a + backdrop * (1 - c.a)
+        )
+    }
+
+    nonisolated static func rgba(_ color: Color) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
+        let ui = UIColor(color)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (r, g, b, a)
     }
 }

@@ -1,5 +1,3 @@
-import Foundation
-
 public enum KeyAction: Sendable, Equatable {
     case character(String)
     case directInput(String)

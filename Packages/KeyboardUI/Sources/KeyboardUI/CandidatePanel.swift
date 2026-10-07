@@ -82,7 +82,6 @@ struct CandidateCellView: View {
             Text(text)
                 .font(theme.candidateFont)
                 .foregroundStyle(.primary)
-                // 选中 pill：左右边距收紧、上下边距略增、圆角更大（保持整体不过度放大）。
                 .padding(.horizontal, isHighlighted ? theme.candidateSelectionHPadding : 10)
                 .frame(height: isHighlighted ? theme.candidateSelectionHeight : theme.candidateCellHeight)
                 .background {
@@ -106,10 +105,8 @@ struct CandidateChevronButton: View {
 
     var body: some View {
         Button(action: action) {
-            // 折叠向下箭头、展开向上箭头（iOS 惯例）。
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.system(size: theme.chevronIconFontSize, weight: .medium))
-                // 深浅色模式一致的固定灰色。
                 .foregroundStyle(Color(hex: 0x4D5650))
                 .frame(width: theme.chevronWidth, height: height)
                 .contentShape(Rectangle())

@@ -21,11 +21,11 @@ struct LogPanelView: View {
             .background(theme.panelBackground, in: RoundedRectangle(cornerRadius: 18))
             Button(action: onExport) {
                 Label("导出", systemImage: "square.and.arrow.up")
-                    .frame(width: 80, height: 20)
+                    .frame(width: 80, height: 24)
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
-            .controlSize(.large)
+            .controlSize(.regular)
             .font(.system(size: 14, weight: .medium))
             .frame(maxWidth: .infinity)
         }

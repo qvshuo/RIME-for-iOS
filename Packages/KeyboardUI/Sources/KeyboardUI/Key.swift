@@ -68,7 +68,7 @@ public struct Key: View {
                 theme: theme
             )
             .contentShape(Rectangle())
-            // 显式覆盖系统默认按键动效（约 0.2s，太慢有迟滞感）。
+            // 退格连打需要短反馈，避免默认动画积累造成迟滞。
             .animation(.easeOut(duration: 0.05), value: isPressed)
             .overlay {
                 KeyTouchTracker(
@@ -179,7 +179,6 @@ private struct KeyButtonStyle: ButtonStyle {
                         .frame(width: theme.previewBubbleSide, height: theme.previewBubbleSide)
                         .background(
                             RoundedRectangle(cornerRadius: theme.previewBubbleCornerRadius, style: .continuous)
-                                // 不透明：半透明气泡会透出键缝显得「透明」。
                                 .fill(theme.previewBubbleBackground)
                         )
                         .floatingShadow()

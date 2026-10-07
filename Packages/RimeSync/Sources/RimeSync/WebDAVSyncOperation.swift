@@ -57,6 +57,10 @@ struct WebDAVSyncOperation: Sendable {
         // 应用短语后必须完成引擎维护与重建，即使网络超时也等待此步骤退出。
         let ownDirectory = try await runEngine(staging)
         try Task.checkCancellation()
+        let phrases = userDirectory.appendingPathComponent("custom_phrase.txt")
+        if FileManager.default.fileExists(atPath: phrases.path) {
+            try Data(contentsOf: phrases).write(to: ownDirectory.appendingPathComponent("custom_phrase.txt"), options: .atomic)
+        }
         var parent = ""
         for component in root.split(separator: "/") {
             parent = parent.isEmpty ? String(component) : parent + "/" + component

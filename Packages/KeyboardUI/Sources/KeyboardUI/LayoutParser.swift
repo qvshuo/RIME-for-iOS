@@ -4,20 +4,14 @@ import Synchronization
 
 public enum LayoutParserError: Error, LocalizedError {
     case missingResource
-    case decodeFailed(Error)
 
     public var errorDescription: String? {
-        switch self {
-        case .missingResource:
-            return "找不到键盘布局 JSON"
-        case .decodeFailed(let error):
-            return "解析布局失败：\(error.localizedDescription)"
-        }
+        "找不到键盘布局 JSON"
     }
 }
 
 public enum LayoutParser {
-    /// 布局不可变，进程内只解码一次，控制器重建时复用。
+    /// 缓存不可变布局，避免控制器重建时重复解码。
     private static let cache = Mutex<[String: LayoutDescriptor]>([:])
 
     public static func load(_ name: String, from bundle: Bundle? = nil) throws -> LayoutDescriptor {

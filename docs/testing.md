@@ -1,6 +1,6 @@
 # 核心测试
 
-当前为 42 项测试、14 个 suite（原 69 项同类情形合并）。测试目标为 `RIMECoreTests`，是 hostless 单元测试 bundle，使用 Swift Testing。测试源按行为分组，名称与生产类型对应。运行命令见 [AGENTS.md](../AGENTS.md#build-test-and-package)。
+当前为 44 项测试、14 个 suite（原 69 项同类情形合并）。测试目标为 `RIMECoreTests`，是 hostless 单元测试 bundle，使用 Swift Testing。测试源按行为分组，名称与生产类型对应。运行命令见 [AGENTS.md](../AGENTS.md#build-test-and-package)。
 
 | 目录 | 保留的行为 | 验证方法 |
 |---|---|---|
@@ -15,6 +15,6 @@
 
 `CompositionCommitTests` 使用进程级真实 librime，因此初始化和清理必须完整并持引擎锁。它既验证原生 ASCII 通道，也验证包含全角标点的字面组合。`TextViewProxy` 放在 `Tests/Input/Fixtures/`，仅模拟宿主代理，不复制生产提交逻辑。
 
-人工/端到端检查：单击及双击 Shift → 字母 → 数字/符号 → 空格；普通 nihao 候选/展开/选择；菜单不显示当前页面；同步编辑不写入宿主；日志只在页面可见时自动更新；系统分享及更多页面无重复关闭控件、日志/同步/导出高度一致；同类型字段切换不串组合；主应用名称与启用状态。键盘需先在系统设置中启用，Unsigned 模拟器安装不包含 App Group 权限。
+人工/端到端检查：单击及双击 Shift → 字母 → 数字/符号 → 空格；普通 nihao 候选/展开/选择；键盘菜单提供同步/日志，功能页左上按钮直接返回键盘；同步编辑不写入宿主；日志只在页面可见时自动更新；系统分享及更多页面无重复关闭控件、日志/同步/导出高度一致；同类型字段切换不串组合；主应用名称与启用状态。键盘需先在系统设置中启用，Unsigned 模拟器安装不包含 App Group 权限。
 
 UIKit 分享、系统键盘启用和 Liquid Glass 的测试需要实际运行宿主。临时 UI 宿主的结果作为本地验证记录，不混入单元测试数量。截图尺寸测试不能证明玻璃效果或系统弹出框正常。真实 WebDAV、自签真机和内存 footprint 仍需独立验证。

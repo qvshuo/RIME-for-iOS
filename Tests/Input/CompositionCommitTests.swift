@@ -72,6 +72,8 @@ struct CompositionCommitTests {
         setCString(root.path, to: &traits.log_dir)
         engine.rimeAPI.setup!(&traits)
         engine.rimeAPI.initialize!(&traits)
+        traits.modules = nil
+        engine.rimeAPI.deployer_initialize!(&traits)
         #expect(engine.rimeAPI.find_module!("lua") != nil)
         #expect(engine.rimeAPI.find_module!("octagram") != nil)
         engine.isReady = true
@@ -189,5 +191,12 @@ struct CompositionCommitTests {
         #expect(!engine.isLiteralComposition)
         #expect(engine.preedit.isEmpty)
         #expect(engine.pollCommit() == nil)
+
+        // 同步初始化必须加载部署模块，不能再次加载自定义输入模块列表。
+        #expect(engine.rimeAPI.find_module!("levers") != nil)
+        #expect(engine.rimeAPI.sync_user_data!())
+        engine.rimeAPI.join_maintenance_thread!()
+        #expect(!engine.rimeAPI.find_session!(engine.session))
+
     }
 }

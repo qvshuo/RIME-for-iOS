@@ -11,20 +11,12 @@ public func rimeStructInit<T: DataSizeable>(_ value: inout T) {
     value.data_size = Int32(MemoryLayout<T>.size - MemoryLayout<Int32>.size)
 }
 
-/// traits 持有这些指针至进程结束，不能在 setup 返回后释放。
+/// 同一 traits 用于 setup 和 initialize，首次调用返回后仍需保留 C 字符串。
 @discardableResult
 public func setCString(_ value: String?, to target: inout UnsafePointer<CChar>?) -> UnsafePointer<CChar>? {
     guard let value else { return nil }
     let duplicated = strdup(value)
     target = UnsafePointer(duplicated)
-    return target
-}
-
-@discardableResult
-public func setCString(_ value: String?, to target: inout UnsafeMutablePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-    guard let value else { return nil }
-    let duplicated = strdup(value)
-    target = duplicated
     return target
 }
 

@@ -36,6 +36,7 @@ struct WebDAVSyncOperationTests {
                                 let directory = staging.appendingPathComponent("own")
                                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                                 try Data("dictionary".utf8).write(to: directory.appendingPathComponent("luna_pinyin_extended.userdb.txt"))
+                                try Data("other dictionary".utf8).write(to: directory.appendingPathComponent("luna_pinyin.userdb.txt"))
                                 try Data("private".utf8).write(to: directory.appendingPathComponent("private.txt"))
                                 return directory
                             })
@@ -48,7 +49,8 @@ struct WebDAVSyncOperationTests {
         let server = Server()
         let operation = operation(server: server, root: root)
         try await operation.run()
-        #expect(await server.uploads.keys.sorted() == ["nested/Rime_Sync/own/luna_pinyin_extended.userdb.txt"])
+        #expect(await server.uploads.keys.sorted() == ["nested/Rime_Sync/own/custom_phrase.txt", "nested/Rime_Sync/own/luna_pinyin_extended.userdb.txt"])
+        #expect(await server.uploads["nested/Rime_Sync/own/custom_phrase.txt"] == Data("foreign phrases".utf8))
         #expect(await server.directories == ["nested", "nested/Rime_Sync", "nested/Rime_Sync/own"])
         #expect(try String(contentsOf: root.appendingPathComponent("user/custom_phrase.txt"), encoding: .utf8) == "foreign phrases")
         #expect(!FileManager.default.fileExists(atPath: operation.staging.path))

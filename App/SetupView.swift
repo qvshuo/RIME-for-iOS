@@ -4,6 +4,10 @@ import UIKit
 struct SetupView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var isKeyboardEnabled = keyboardEnabled()
+    @State private var isTestingNetwork = false
+    @State private var networkMessage: String?
+    // 系统未提供完整的联网权限枚举；这里只保存连接确认结果，离线不等于拒绝授权。
+    @AppStorage("networkAccessConfirmed") private var networkAccessConfirmed = false
     private static func keyboardEnabled() -> Bool {
         let extensionBundleID = "art.anjing.rimeios.keyboard"
         if let keyboards = UserDefaults.standard.array(forKey: "AppleKeyboards") as? [String] {
@@ -33,6 +37,7 @@ struct SetupView: View {
                     } icon: {
                         Image(systemName: isKeyboardEnabled ? "checkmark.circle.fill" : "keyboard")
                             .foregroundStyle(isKeyboardEnabled ? Color.green : Color.primary)
+                            .frame(width: 24)
                     }
                     .font(.body)
                     if !isKeyboardEnabled {
@@ -41,6 +46,31 @@ struct SetupView: View {
                         }
                         .buttonStyle(.glassProminent)
                         .controlSize(.regular)
+                    }
+                    Divider()
+                    Label {
+                        Text(networkAccessConfirmed ? "已授予联网权限" : "未授予联网权限")
+                            .foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: networkAccessConfirmed ? "checkmark.circle.fill" : "network")
+                            .foregroundStyle(networkAccessConfirmed ? Color.green : Color.primary)
+                            .frame(width: 24)
+                    }
+                    .font(.body)
+                    .accessibilityIdentifier("network-access-status")
+                    if !networkAccessConfirmed {
+                        Button("去系统设置中开启", systemImage: "arrow.up.forward") {
+                            openAppSettings()
+                        }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.regular)
+                        .disabled(isTestingNetwork)
+                        .accessibilityIdentifier("enable-network-access")
+                    }
+                    if let networkMessage {
+                        Text(networkMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,8 +92,44 @@ struct SetupView: View {
             .padding(.bottom, 32)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { isKeyboardEnabled = Self.keyboardEnabled() }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .active {
+                isKeyboardEnabled = Self.keyboardEnabled()
+                Task { await checkNetworkAccess() }
+            }
+        }
+    }
+
+    @MainActor
+    private func checkNetworkAccess() async {
+        guard !isTestingNetwork else { return }
+        isTestingNetwork = true
+        networkMessage = nil
+        defer { isTestingNetwork = false }
+        // 前台应用请求公开连通性页面，让系统有机会展示其网络授权提示。
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 15
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        do {
+            let url = URL(string: "https://www.apple.com/library/test/success.html")!
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  String(decoding: data, as: UTF8.self).contains("<TITLE>Success</TITLE>") else {
+                throw URLError(.badServerResponse)
+            }
+            networkAccessConfirmed = true
+        } catch {
+            networkAccessConfirmed = false
+            networkMessage = "无法联网，请检查系统中的无线局域网／蜂窝数据权限和网络连接后重试。"
+        }
+    }
+
+    private func openAppSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 

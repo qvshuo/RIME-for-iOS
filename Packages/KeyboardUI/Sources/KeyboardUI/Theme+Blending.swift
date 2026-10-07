@@ -1,4 +1,3 @@
-import UIKit
 import SwiftUI
 
 public extension Theme {
@@ -19,24 +18,5 @@ public extension Theme {
         target: UInt32
     ) -> Color {
         Color(hex: base).opacity(overlayAlpha(base: base, target: target))
-    }
-
-    nonisolated static func blended(
-        _ color: Color,
-        over backdrop: CGFloat = darkBackdrop
-    ) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
-        let c = rgba(color)
-        return (
-            c.r * c.a + backdrop * (1 - c.a),
-            c.g * c.a + backdrop * (1 - c.a),
-            c.b * c.a + backdrop * (1 - c.a)
-        )
-    }
-
-    nonisolated static func rgba(_ color: Color) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
-        let ui = UIColor(color)
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
-        return (r, g, b, a)
     }
 }

@@ -26,9 +26,6 @@ public struct Theme {
     /// 字号须与 candidateFont 一致，否则测量和实际排版不符。
     public let candidateCellFontSize: CGFloat
     public let specialKeyFontSize: CGFloat
-    public let toastFontSize: CGFloat
-    public let toastHPadding: CGFloat
-    public let toastVPadding: CGFloat
     public let previewBubbleSide: CGFloat
     public let previewBubbleCornerRadius: CGFloat
     public let previewBubbleOffsetY: CGFloat
@@ -58,8 +55,7 @@ public struct Theme {
     )
 
     public nonisolated(unsafe) static let dark = Theme(
-        // 半透明叠加：由 `overlay(base:target:)` 反解 alpha，经系统深色背板
-        // （`darkBackdrop` ≈ #2B2B2B）混合后精确命中目标观感色。
+        // 按系统深色背板反解叠加透明度，保持预定对比。
         keyBackground: Theme.overlay(target: 0x585858),
         specialKeyBackground: Theme.overlay(base: 0x858585, target: 0x3A3A3A),
         pressedKeyBackground: Theme.overlay(target: 0x6B6B6B),
@@ -70,7 +66,7 @@ public struct Theme {
         geometry: base
     )
 
-    // 深浅色共享的几何/字体 token，单一来源。
+    // 深浅主题共用几何与字体，避免键位随外观变化。
     private static let base = ThemeGeometry(
         keyCornerRadius: 8,
         keyHeight: 45,
@@ -78,22 +74,19 @@ public struct Theme {
         rowSpacing: 11,
         keyboardPadding: EdgeInsets(top: 8, leading: 7, bottom: 5, trailing: 7),
         candidateBarHeight: 40,
-        chevronWidth: 34,
+        chevronWidth: 38,
         candidateCellHeight: 32,
         candidateSelectionHeight: 34,
         candidateSelectionHPadding: 6,
         candidateSelectionCornerRadius: 9,
         candidateCellFontSize: 19,
         specialKeyFontSize: 17,
-        toastFontSize: 15,
-        toastHPadding: 16,
-        toastVPadding: 9,
         previewBubbleSide: 48,
         previewBubbleCornerRadius: 10,
         previewBubbleOffsetY: -47,
         previewFontSize: 30,
         iconFontSize: 21,
-        chevronIconFontSize: 13,
+        chevronIconFontSize: 15,
         font: .system(size: 24, weight: .regular),
         candidateFont: .system(size: 19, weight: .regular)
     )
@@ -128,9 +121,6 @@ public struct Theme {
         self.candidateSelectionCornerRadius = geometry.candidateSelectionCornerRadius
         self.candidateCellFontSize = geometry.candidateCellFontSize
         self.specialKeyFontSize = geometry.specialKeyFontSize
-        self.toastFontSize = geometry.toastFontSize
-        self.toastHPadding = geometry.toastHPadding
-        self.toastVPadding = geometry.toastVPadding
         self.previewBubbleSide = geometry.previewBubbleSide
         self.previewBubbleCornerRadius = geometry.previewBubbleCornerRadius
         self.previewBubbleOffsetY = geometry.previewBubbleOffsetY
@@ -156,9 +146,6 @@ private struct ThemeGeometry {
     let candidateSelectionCornerRadius: CGFloat
     let candidateCellFontSize: CGFloat
     let specialKeyFontSize: CGFloat
-    let toastFontSize: CGFloat
-    let toastHPadding: CGFloat
-    let toastVPadding: CGFloat
     let previewBubbleSide: CGFloat
     let previewBubbleCornerRadius: CGFloat
     let previewBubbleOffsetY: CGFloat

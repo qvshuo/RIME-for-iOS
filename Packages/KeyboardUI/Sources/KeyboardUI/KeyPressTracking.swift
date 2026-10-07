@@ -19,7 +19,7 @@ final class KeyPressRepeater: @unchecked Sendable {
 
     func startPress() {
         fire()
-        // 防御：清掉上一次 press 残留的定时器，避免异常调用序列下双重触发。
+        // 新触摸开始前取消旧定时器，避免重复触发。
         endPress()
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -97,8 +97,7 @@ struct KeyTouchTracker: UIViewRepresentable {
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             super.touchesMoved(touches, with: event)
             guard let touch = activeTouch, touches.contains(touch), !hasDrifted else { return }
-            // 滑出按键周边容差即视为漂移：停止长按计时、复位视觉，松手不再触发动作
-            // （原生键盘的纠错手势）。
+            // 滑出容差后取消本次触摸，松手时不能再次触发按键。
             let tolerance: CGFloat = 20
             let location = touch.location(in: self)
             if !bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(location) {

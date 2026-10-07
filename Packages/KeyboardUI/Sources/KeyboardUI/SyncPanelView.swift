@@ -4,6 +4,7 @@ struct SyncPanelView: View {
     let model: SyncSettingsModel
     let inputState: InputState
     let theme: Theme
+    let hasFullAccess: () -> Bool
     let onSync: () -> Void
     @State private var confirmingDelete = false
 
@@ -30,7 +31,9 @@ struct SyncPanelView: View {
                     }
                 }
             }
-            if model.hasUnsavedChanges && model.hasSavedCredentials {
+            if let text = model.message, model.isError {
+                message(text, isError: true)
+            } else if model.hasUnsavedChanges && model.hasSavedCredentials {
                 message("修改后请先保存。", isError: false)
             } else if let text = model.message {
                 message(text, isError: model.isError)
@@ -49,30 +52,32 @@ struct SyncPanelView: View {
                     HStack(spacing: 10) {
                         Button {
                             model.editingField = nil
-                            Task { await model.save() }
+                            Task { await model.save(hasFullAccess: hasFullAccess()) }
                         } label: {
                             Label(model.isTesting ? "测试中" : "保存", systemImage: "checkmark")
                         }
                         .buttonStyle(.glass)
-                        .disabled(model.allCredentialsEmpty || model.isTesting || inputState.isSyncing)
+                        .disabled(model.allCredentialsEmpty || (model.hasSavedCredentials && !model.hasUnsavedChanges) || model.isTesting || inputState.isSyncing)
                         Button("删除凭据", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                             .buttonStyle(.glass)
                             .disabled(!model.hasSavedCredentials || model.isTesting || inputState.isSyncing)
                         Spacer(minLength: 0)
-                        Button(action: onSync) {
+                        Button {
+                            if model.requireFullAccess(hasFullAccess()) { onSync() }
+                        } label: {
                             HStack(spacing: 5) {
                                 if inputState.isSyncing {
                                     ProgressView().controlSize(.mini)
                                 } else {
                                     Image(systemName: "arrow.triangle.2.circlepath")
                                 }
-                                Text(inputState.isSyncing ? "同步中" : "同步")
+                                Text(syncTitle)
                             }
-                            .frame(width: 80, height: 20)
+                            .frame(width: 80, height: 24)
                         }
                         .buttonStyle(.glassProminent)
                         .tint(.blue)
-                        .controlSize(.large)
+                        .controlSize(.regular)
                         .disabled(!model.hasSavedCredentials || model.hasUnsavedChanges || model.isTesting || inputState.isSyncing)
                     }
                 }
@@ -83,6 +88,15 @@ struct SyncPanelView: View {
         }
         .padding(.bottom, 10)
         .onAppear { model.load() }
+    }
+
+    private var syncTitle: String {
+        if inputState.isSyncing { return "同步中" }
+        switch inputState.sync.result {
+        case .completed: return "同步完成"
+        case .failed: return "同步失败"
+        case nil: return "同步"
+        }
     }
 
     private func message(_ text: String, isError: Bool) -> some View {

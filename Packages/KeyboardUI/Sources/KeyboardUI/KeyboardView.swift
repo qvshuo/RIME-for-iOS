@@ -13,6 +13,7 @@ public struct KeyboardView: View {
     let inputState: InputState
     let keyboardType: UIKeyboardType
     let returnKeyType: UIReturnKeyType
+    let hasFullAccess: () -> Bool
     let onKey: (KeyAction) -> Void
     let onExportLogs: () -> Void
 
@@ -25,6 +26,7 @@ public struct KeyboardView: View {
         inputState: InputState,
         keyboardType: UIKeyboardType = .default,
         returnKeyType: UIReturnKeyType = .default,
+        hasFullAccess: @escaping () -> Bool = { true },
         onKey: @escaping (KeyAction) -> Void,
         onExportLogs: @escaping () -> Void = {}
     ) {
@@ -32,6 +34,7 @@ public struct KeyboardView: View {
         self.inputState = inputState
         self.keyboardType = keyboardType
         self.returnKeyType = returnKeyType
+        self.hasFullAccess = hasFullAccess
         self.onKey = onKey
         self.onExportLogs = onExportLogs
         self._viewModel = State(initialValue: KeyboardInputModel())
@@ -60,7 +63,10 @@ public struct KeyboardView: View {
                         if inputState.panelMode == .input {
                             CandidatesBar(
                                 rimeContext: rimeContext, inputState: inputState, theme: theme,
-                                isExpanded: $candidatesExpanded, onSelect: selectAndCollapse
+                                isExpanded: Binding(get: { candidatesExpanded }, set: { expanded in
+                                    if expanded { rimeContext.loadExpandedCandidates() }
+                                    candidatesExpanded = expanded
+                                }), onSelect: selectAndCollapse
                             )
                             keyArea(theme: theme, in: geometry.size.width, model: viewModel)
                         } else {
@@ -68,7 +74,7 @@ public struct KeyboardView: View {
                             switch inputState.panelMode {
                             case .sync:
                                 SyncPanelView(model: settings, inputState: inputState, theme: theme,
-                                              onSync: { onKey(.startSync) })
+                                              hasFullAccess: hasFullAccess, onSync: { onKey(.startSync) })
                                 if settings.editingField != nil {
                                     keyArea(theme: theme, in: geometry.size.width, model: editorModel, editing: true)
                                 }
@@ -90,10 +96,6 @@ public struct KeyboardView: View {
         // 用主题总高度作 SwiftUI 内在尺寸，系统键盘容器按此高度平滑滑入。
         .frame(height: panelHeight(theme: theme))
         .frame(maxWidth: .infinity)
-        // Toast 的观察限定在悬浮层，避免输入树因提示变化整体刷新。
-        .overlay(alignment: .top) {
-            SyncToastOverlay(inputState: inputState, theme: theme)
-        }
         .onAppear {
             KeyboardFeedback.prepare()
             viewModel.handleKeyboardTypeChange(keyboardType)
@@ -122,12 +124,6 @@ public struct KeyboardView: View {
             let name = switch mode { case .input: "输入"; case .sync: "同步"; case .log: "日志" }
             KeyboardDiagnostics.shared.record("面板 → \(name)")
         }
-        // 展开时一次性补齐全部候选；候选清空的自动收起由子视图自行观察。
-        .onChange(of: candidatesExpanded) { _, expanded in
-            if expanded {
-                rimeContext.loadExpandedCandidates()
-            }
-        }
     }
 
     private func panelHeight(theme: Theme) -> CGFloat {
@@ -149,8 +145,7 @@ public struct KeyboardView: View {
     private func keyArea(theme: Theme, in totalWidth: CGFloat, model: KeyboardInputModel, editing: Bool = false) -> some View {
         VStack(spacing: theme.rowSpacing) {
             if model.currentRows.isEmpty {
-                // 布局加载失败兜底：显示错误而非空白键盘。
-                // 高度 = 键区高度（总高 − 候选栏 − 上下内边距），与正常键区一致。
+                // 失败提示占用同样的键区高度，避免系统键盘容器跳变。
                 let keysAreaHeight = theme.totalHeight
                     - theme.candidateBarHeight
                     - theme.keyboardPadding.top
@@ -204,7 +199,6 @@ public struct KeyboardView: View {
         }
         if let transformed = viewModel.consume(action, rimeContext: rimeContext) {
             onKey(transformed)
-            // 中/英切换：视图按当前语言把 ascii_mode 写回 RIME。
             if case .toggleLanguage = transformed {
                 if !inputState.isSyncing { rimeContext.setAsciiMode(viewModel.inputLanguage == .english) }
             }
@@ -218,18 +212,10 @@ private struct PanelMenu: View {
 
     var body: some View {
         Menu {
-            if inputState.panelMode != .input {
-                Button("键盘", systemImage: "keyboard") { inputState.panelMode = .input }
-                    .accessibilityIdentifier("panel-menu-input")
-            }
-            if inputState.panelMode != .sync {
-                Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
-                    .accessibilityIdentifier("panel-menu-sync")
-            }
-            if inputState.panelMode != .log {
-                Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
-                    .accessibilityIdentifier("panel-menu-log")
-            }
+            Button("同步", systemImage: "arrow.triangle.2.circlepath") { inputState.panelMode = .sync }
+                .accessibilityIdentifier("panel-menu-sync")
+            Button("日志", systemImage: "doc.text.magnifyingglass") { inputState.panelMode = .log }
+                .accessibilityIdentifier("panel-menu-log")
         } label: {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 14, weight: .medium))
@@ -248,7 +234,16 @@ private struct PanelHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            PanelMenu(inputState: inputState, theme: theme)
+            Button { inputState.panelMode = .input } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(theme.keyForeground)
+                    .frame(width: 32, height: 32)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("返回键盘")
+            .accessibilityIdentifier("panel-back-input")
             Text(inputState.panelMode == .sync ? "同步" : "日志")
                 .font(.system(size: 17, weight: .semibold))
             Spacer()
@@ -273,7 +268,7 @@ private struct CandidatesBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if rimeContext.preedit.isEmpty || inputState.panelMode != .input {
+            if rimeContext.preedit.isEmpty {
                 PanelMenu(inputState: inputState, theme: theme)
                     .padding(.leading, theme.keyboardPadding.leading)
                     .frame(width: theme.keyboardPadding.leading + 40,
@@ -286,7 +281,6 @@ private struct CandidatesBar: View {
         }
         .onChange(of: rimeContext.candidates.isEmpty) { _, empty in
             if empty { isExpanded = false }
-            else { inputState.panelMode = .input }
         }
     }
 }
@@ -367,40 +361,6 @@ private struct KeyboardRowView: View {
     }
 }
 
-private struct SyncToastOverlay: View {
-    let inputState: InputState
-    let theme: Theme
-
-    var body: some View {
-        Group {
-            if let toast = inputState.toast {
-                SyncToastView(toast: toast, theme: theme).padding(.top, 4)
-            }
-        }
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.15), value: inputState.toast != nil)
-    }
-}
-
-private struct SyncToastView: View {
-    let toast: SyncToast
-    let theme: Theme
-
-    var body: some View {
-        Text(toast.message)
-            .font(.system(size: theme.toastFontSize, weight: .regular))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, theme.toastHPadding)
-            .padding(.vertical, theme.toastVPadding)
-            .background {
-                Capsule()
-                    .fill(theme.keyBackground)
-                    .floatingShadow()
-            }
-            .allowsHitTesting(false)
-    }
-}
-
 private struct ExpandedCandidateGrid: View {
     let rimeContext: RimeContext
     let theme: Theme
@@ -434,14 +394,24 @@ private struct ExpandedCandidateGrid: View {
             cellHeight: theme.candidateCellHeight
         )
 
+        // 将每行候选切片为独立值；惰性闭包不再使用可变化的行号索引排版数组。
+        let rows = metrics.rows.enumerated().map { row, count in
+            let start = metrics.rowStarts[row]
+            return Array(list.enumerated().dropFirst(start).prefix(count))
+        }
         return ZStack(alignment: .topTrailing) {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 8) {
-                    ForEach(metrics.rows.indices, id: \.self) { row in
+                    ForEach(Array(rows.enumerated()), id: \.offset) { row, items in
                         HStack(spacing: 0) {
-                            ForEach(0..<metrics.rows[row], id: \.self) { col in
-                                let index = metrics.rowStarts[row] + col
-                                cell(index: index, list: list, minWidth: metrics.minCellWidth)
+                            ForEach(items, id: \.offset) { index, candidate in
+                                CandidateCellView(
+                                    text: candidate.text,
+                                    isHighlighted: index == rimeContext.highlightedCandidateIndex,
+                                    theme: theme,
+                                    action: { onSelect(index) }
+                                )
+                                .frame(minWidth: metrics.minCellWidth, alignment: .leading)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -463,23 +433,6 @@ private struct ExpandedCandidateGrid: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func cell(index: Int, list: [Candidate], minWidth: CGFloat) -> some View {
-        // 惰性渲染可能读到被替换的快照，越界下标返回空视图。
-        if list.indices.contains(index) {
-            let candidate = list[index]
-            CandidateCellView(
-                text: candidate.text,
-                isHighlighted: index == rimeContext.highlightedCandidateIndex,
-                theme: theme,
-                action: { onSelect(index) }
-            )
-            .frame(minWidth: minWidth, alignment: .leading)
-        } else {
-            Color.clear
-        }
     }
 }
 

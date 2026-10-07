@@ -58,7 +58,7 @@ enum RowLayoutMath {
         let returnLabelWidth = parameters.returnLabelWidth
         let gridWidth = totalWidth - keyboardLeading - keyboardTrailing
         // 字母格宽：以 10 键行推导，全键盘共用（对齐计算的基础单位）。
-        // 退化窄宽度下可为负，clamp 到 0 避免产生负帧宽（weightedRow 同款防护）。
+        // 窄屏下计算结果可能为负，限制为零以避免无效帧宽。
         let letter = max(0, (gridWidth - 9 * keySpacing) / 10)
 
         if keys.contains(where: { $0.action.isSpace }) {
